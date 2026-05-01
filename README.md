@@ -8,7 +8,7 @@ Each server lives under `servers/<name>/`, ships as a Docker container, and is m
 
 | Server | Type | Description |
 |--------|------|-------------|
-| *(none yet — see [Adding a server](#adding-a-server))* | | |
+| [mcp-obsidian](servers/mcp-obsidian/) | Tool + Resource | Interact with Obsidian via the Local REST API plugin |
 
 ## Prerequisites
 
