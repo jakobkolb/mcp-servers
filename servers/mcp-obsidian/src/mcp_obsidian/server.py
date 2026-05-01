@@ -5,7 +5,7 @@ from typing import Any
 
 from dotenv import load_dotenv
 from mcp.server import Server
-from mcp.types import EmbeddedResource, ImageContent, TextContent
+from mcp.types import EmbeddedResource, ImageContent, TextContent, Tool
 
 load_dotenv()
 
@@ -25,7 +25,7 @@ _handlers = {h.name: h for h in tools.ALL_HANDLERS}
 
 
 @app.list_tools()
-async def list_tools() -> list[tools.Tool]:
+async def list_tools() -> list[Tool]:
     return [h.get_tool_description() for h in _handlers.values()]
 
 

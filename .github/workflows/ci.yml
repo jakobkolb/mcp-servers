@@ -15,19 +15,14 @@ jobs:
         with:
           version: "latest"
 
-      - name: Install dependencies
-        run: uv sync --all-packages
+      - name: Install
+        run: make install
 
-      - name: Lint (ruff)
-        run: |
-          uv run ruff check .
-          uv run ruff format --check .
-
-      - name: Type check (mypy)
-        run: uv run mypy servers/
+      - name: Lint
+        run: make lint
 
       - name: Test
-        run: uv run pytest servers/ -v --tb=short
+        run: make test
 
   discover-servers:
     runs-on: ubuntu-latest
@@ -38,11 +33,7 @@ jobs:
 
       - name: Find servers with Dockerfiles
         id: find
-        run: |
-          servers=$(for d in servers/*/; do
-            [ -f "${d}Dockerfile" ] && basename "$d"
-          done | jq -R . | jq -sc .)
-          echo "servers=$servers" >> "$GITHUB_OUTPUT"
+        run: echo "servers=$(make list-servers)" >> "$GITHUB_OUTPUT"
 
   build:
     needs: [lint-and-test, discover-servers]

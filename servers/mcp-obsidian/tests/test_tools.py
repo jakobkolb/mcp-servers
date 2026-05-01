@@ -27,9 +27,9 @@ def _text(result: list) -> str:
 
 
 def test_list_files_in_vault(mocker: pytest.MonkeyPatch) -> None:
-    mocker.patch.object(tools, "_api", return_value=mocker.MagicMock(
-        list_files_in_vault=lambda: ["a.md", "b.md"]
-    ))
+    mocker.patch.object(
+        tools, "_api", return_value=mocker.MagicMock(list_files_in_vault=lambda: ["a.md", "b.md"])
+    )
     result = ListFilesInVaultToolHandler().run_tool({})
     assert "a.md" in _text(result)
 
@@ -40,9 +40,9 @@ def test_list_files_in_dir_missing_arg() -> None:
 
 
 def test_list_files_in_dir(mocker: pytest.MonkeyPatch) -> None:
-    mocker.patch.object(tools, "_api", return_value=mocker.MagicMock(
-        list_files_in_dir=lambda p: ["note.md"]
-    ))
+    mocker.patch.object(
+        tools, "_api", return_value=mocker.MagicMock(list_files_in_dir=lambda p: ["note.md"])
+    )
     result = ListFilesInDirToolHandler().run_tool({"dirpath": "Projects"})
     assert "note.md" in _text(result)
 
@@ -53,9 +53,9 @@ def test_get_file_contents_missing_arg() -> None:
 
 
 def test_get_file_contents(mocker: pytest.MonkeyPatch) -> None:
-    mocker.patch.object(tools, "_api", return_value=mocker.MagicMock(
-        get_file_contents=lambda p: "# Hello"
-    ))
+    mocker.patch.object(
+        tools, "_api", return_value=mocker.MagicMock(get_file_contents=lambda p: "# Hello")
+    )
     result = GetFileContentsToolHandler().run_tool({"filepath": "note.md"})
     assert "Hello" in _text(result)
 
@@ -66,9 +66,11 @@ def test_batch_get_file_contents_missing_arg() -> None:
 
 
 def test_batch_get_file_contents(mocker: pytest.MonkeyPatch) -> None:
-    mocker.patch.object(tools, "_api", return_value=mocker.MagicMock(
-        get_batch_file_contents=lambda fps: "# a.md\n\ncontent"
-    ))
+    mocker.patch.object(
+        tools,
+        "_api",
+        return_value=mocker.MagicMock(get_batch_file_contents=lambda fps: "# a.md\n\ncontent"),
+    )
     result = BatchGetFileContentsToolHandler().run_tool({"filepaths": ["a.md"]})
     assert "a.md" in _text(result)
 
@@ -79,9 +81,13 @@ def test_search_missing_arg() -> None:
 
 
 def test_search(mocker: pytest.MonkeyPatch) -> None:
-    mocker.patch.object(tools, "_api", return_value=mocker.MagicMock(
-        search=lambda q, ctx: [{"filename": "note.md", "score": 1.0, "matches": []}]
-    ))
+    mocker.patch.object(
+        tools,
+        "_api",
+        return_value=mocker.MagicMock(
+            search=lambda q, ctx: [{"filename": "note.md", "score": 1.0, "matches": []}]
+        ),
+    )
     result = SearchToolHandler().run_tool({"query": "hello"})
     assert "note.md" in _text(result)
 
@@ -92,9 +98,9 @@ def test_complex_search_missing_arg() -> None:
 
 
 def test_complex_search(mocker: pytest.MonkeyPatch) -> None:
-    mocker.patch.object(tools, "_api", return_value=mocker.MagicMock(
-        search_json=lambda q: [{"path": "note.md"}]
-    ))
+    mocker.patch.object(
+        tools, "_api", return_value=mocker.MagicMock(search_json=lambda q: [{"path": "note.md"}])
+    )
     result = ComplexSearchToolHandler().run_tool({"query": {"glob": ["*.md", {"var": "path"}]}})
     assert "note.md" in _text(result)
 
@@ -159,9 +165,9 @@ def test_periodic_note_invalid_period() -> None:
 
 
 def test_periodic_note(mocker: pytest.MonkeyPatch) -> None:
-    mocker.patch.object(tools, "_api", return_value=mocker.MagicMock(
-        get_periodic_note=lambda p, t: "# Daily"
-    ))
+    mocker.patch.object(
+        tools, "_api", return_value=mocker.MagicMock(get_periodic_note=lambda p, t: "# Daily")
+    )
     result = PeriodicNotesToolHandler().run_tool({"period": "daily"})
     assert "Daily" in _text(result)
 
@@ -172,17 +178,23 @@ def test_recent_periodic_notes_invalid_period() -> None:
 
 
 def test_recent_periodic_notes(mocker: pytest.MonkeyPatch) -> None:
-    mocker.patch.object(tools, "_api", return_value=mocker.MagicMock(
-        get_recent_periodic_notes=lambda p, l, c: [{"path": "daily.md"}]
-    ))
+    mocker.patch.object(
+        tools,
+        "_api",
+        return_value=mocker.MagicMock(
+            get_recent_periodic_notes=lambda p, lim, c: [{"path": "daily.md"}]
+        ),
+    )
     result = RecentPeriodicNotesToolHandler().run_tool({"period": "daily", "limit": 3})
     assert "daily.md" in _text(result)
 
 
 def test_recent_changes(mocker: pytest.MonkeyPatch) -> None:
-    mocker.patch.object(tools, "_api", return_value=mocker.MagicMock(
-        get_recent_changes=lambda l, d: {"results": []}
-    ))
+    mocker.patch.object(
+        tools,
+        "_api",
+        return_value=mocker.MagicMock(get_recent_changes=lambda lim, d: {"results": []}),
+    )
     result = RecentChangesToolHandler().run_tool({"limit": 5, "days": 7})
     assert "results" in _text(result)
 

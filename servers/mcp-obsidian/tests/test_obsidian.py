@@ -117,7 +117,9 @@ def test_delete_file(api: Obsidian, mocker: pytest.MonkeyPatch) -> None:
 
 def test_search(api: Obsidian, mocker: pytest.MonkeyPatch) -> None:
     mock_post = mocker.patch("requests.post")
-    mock_post.return_value.json.return_value = [{"filename": "note.md", "score": 1.0, "matches": []}]
+    mock_post.return_value.json.return_value = [
+        {"filename": "note.md", "score": 1.0, "matches": []}
+    ]
     mock_post.return_value.raise_for_status = lambda: None
 
     result = api.search("hello", context_length=50)

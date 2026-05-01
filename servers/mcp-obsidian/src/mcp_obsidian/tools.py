@@ -41,7 +41,9 @@ class ListFilesInVaultToolHandler(ToolHandler):
     def get_tool_description(self) -> Tool:
         return Tool(
             name=self.name,
-            description="Lists all files and directories in the root directory of your Obsidian vault.",
+            description=(
+                "Lists all files and directories in the root directory of your Obsidian vault."
+            ),
             inputSchema={"type": "object", "properties": {}, "required": []},
         )
 
@@ -57,13 +59,18 @@ class ListFilesInDirToolHandler(ToolHandler):
     def get_tool_description(self) -> Tool:
         return Tool(
             name=self.name,
-            description="Lists all files and directories that exist in a specific Obsidian directory.",
+            description=(
+                "Lists all files and directories that exist in a specific Obsidian directory."
+            ),
             inputSchema={
                 "type": "object",
                 "properties": {
                     "dirpath": {
                         "type": "string",
-                        "description": "Path to list files from (relative to your vault root). Note that empty directories will not be returned.",
+                        "description": (
+                            "Path to list files from (relative to your vault root)."
+                            " Note that empty directories will not be returned."
+                        ),
                     },
                 },
                 "required": ["dirpath"],
@@ -112,7 +119,9 @@ class BatchGetFileContentsToolHandler(ToolHandler):
     def get_tool_description(self) -> Tool:
         return Tool(
             name=self.name,
-            description="Return the contents of multiple files in your vault, concatenated with headers.",
+            description=(
+                "Return the contents of multiple files in your vault, concatenated with headers."
+            ),
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -145,7 +154,8 @@ class SearchToolHandler(ToolHandler):
         return Tool(
             name=self.name,
             description=(
-                "Simple search for documents matching a specified text query across all files in the vault.\n\n"
+                "Simple search for documents matching a specified text query"
+                " across all files in the vault.\n\n"
                 "Use this tool when you want to do a simple text search."
             ),
             inputSchema={
@@ -157,7 +167,9 @@ class SearchToolHandler(ToolHandler):
                     },
                     "context_length": {
                         "type": "integer",
-                        "description": "How much context to return around the matching string (default: 100).",
+                        "description": (
+                            "How much context to return around the matching string (default: 100)."
+                        ),
                         "default": 100,
                     },
                 },
@@ -199,17 +211,20 @@ class ComplexSearchToolHandler(ToolHandler):
             name=self.name,
             description=(
                 "Complex search for documents using a JsonLogic query.\n\n"
-                "Supports standard JsonLogic operators plus 'glob' and 'regexp' for pattern matching. "
-                "Results must be non-falsy.\n\n"
-                "Use this tool when you want to do a complex search, e.g. for all documents with certain tags.\n\n"
+                "Supports standard JsonLogic operators plus 'glob' and 'regexp'"
+                " for pattern matching. Results must be non-falsy.\n\n"
+                "Use this tool when you want to do a complex search,"
+                " e.g. for all documents with certain tags.\n\n"
                 "ALWAYS follow query syntax in examples.\n\n"
                 "Examples\n\n"
                 '1. Match all markdown files\n{"glob": ["*.md", {"var": "path"}]}\n\n'
-                '2. Match all markdown files with 1221 substring\n'
-                '{"and": [{"glob": ["*.md", {"var": "path"}]}, {"regexp": [".*1221.*", {"var": "content"}]}]}\n\n'
-                '3. Match markdown files in Work folder containing name Keaton\n'
-                '{"and": [{"glob": ["*.md", {"var": "path"}]}, {"regexp": [".*Work.*", {"var": "path"}]}, '
-                '{"regexp": ["Keaton", {"var": "content"}]}]}'
+                "2. Match all markdown files with 1221 substring\n"
+                '{"and": [{"glob": ["*.md", {"var": "path"}]},'
+                ' {"regexp": [".*1221.*", {"var": "content"}]}]}\n\n'
+                "3. Match markdown files in Work folder containing name Keaton\n"
+                '{"and": [{"glob": ["*.md", {"var": "path"}]},'
+                ' {"regexp": [".*Work.*", {"var": "path"}]},'
+                ' {"regexp": ["Keaton", {"var": "content"}]}]}'
             ),
             inputSchema={
                 "type": "object",
@@ -217,8 +232,8 @@ class ComplexSearchToolHandler(ToolHandler):
                     "query": {
                         "type": "object",
                         "description": (
-                            'JsonLogic query object. Example: {"glob": ["*.md", {"var": "path"}]} '
-                            "matches all markdown files."
+                            'JsonLogic query object. Example: {"glob": ["*.md", {"var": "path"}]}'
+                            " matches all markdown files."
                         ),
                     }
                 },
@@ -262,7 +277,8 @@ class AppendContentToolHandler(ToolHandler):
         if "filepath" not in args or "content" not in args:
             raise RuntimeError("filepath and content arguments required")
         _api().append_content(args["filepath"], args["content"])
-        return [TextContent(type="text", text=f"Successfully appended content to {args['filepath']}")]
+        msg = f"Successfully appended content to {args['filepath']}"
+        return [TextContent(type="text", text=msg)]
 
 
 class PatchContentToolHandler(ToolHandler):
@@ -272,7 +288,10 @@ class PatchContentToolHandler(ToolHandler):
     def get_tool_description(self) -> Tool:
         return Tool(
             name=self.name,
-            description="Insert content into an existing note relative to a heading, block reference, or frontmatter field.",
+            description=(
+                "Insert content into an existing note relative to a heading,"
+                " block reference, or frontmatter field."
+            ),
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -293,7 +312,10 @@ class PatchContentToolHandler(ToolHandler):
                     },
                     "target": {
                         "type": "string",
-                        "description": "Target identifier (heading path, block reference, or frontmatter field).",
+                        "description": (
+                            "Target identifier: heading path,"
+                            " block reference, or frontmatter field."
+                        ),
                     },
                     "content": {
                         "type": "string",
@@ -307,11 +329,18 @@ class PatchContentToolHandler(ToolHandler):
     def run_tool(self, args: dict[str, Any]) -> ToolResult:
         required = ["filepath", "operation", "target_type", "target", "content"]
         if not all(k in args for k in required):
-            raise RuntimeError("filepath, operation, target_type, target and content arguments required")
+            raise RuntimeError(
+                "filepath, operation, target_type, target and content arguments required"
+            )
         _api().patch_content(
-            args["filepath"], args["operation"], args["target_type"], args["target"], args["content"]
+            args["filepath"],
+            args["operation"],
+            args["target_type"],
+            args["target"],
+            args["content"],
         )
-        return [TextContent(type="text", text=f"Successfully patched content in {args['filepath']}")]
+        msg = f"Successfully patched content in {args['filepath']}"
+        return [TextContent(type="text", text=msg)]
 
 
 class PutContentToolHandler(ToolHandler):
@@ -321,7 +350,9 @@ class PutContentToolHandler(ToolHandler):
     def get_tool_description(self) -> Tool:
         return Tool(
             name=self.name,
-            description="Create a new file in your vault or replace the content of an existing one.",
+            description=(
+                "Create a new file in your vault or replace the content of an existing one."
+            ),
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -359,7 +390,9 @@ class DeleteFileToolHandler(ToolHandler):
                 "properties": {
                     "filepath": {
                         "type": "string",
-                        "description": "Path to the file or directory to delete (relative to vault root).",
+                        "description": (
+                            "Path to the file or directory to delete (relative to vault root)."
+                        ),
                         "format": "path",
                     },
                     "confirm": {
@@ -400,8 +433,8 @@ class PeriodicNotesToolHandler(ToolHandler):
                     "type": {
                         "type": "string",
                         "description": (
-                            "Type of data to get: 'content' returns Markdown; "
-                            "'metadata' includes frontmatter, tags, paths, and content."
+                            "Type of data to get: 'content' returns Markdown;"
+                            " 'metadata' includes frontmatter, tags, paths, and content."
                         ),
                         "default": "content",
                         "enum": ["content", "metadata"],
@@ -417,7 +450,8 @@ class PeriodicNotesToolHandler(ToolHandler):
         period = args["period"]
         valid_periods = ["daily", "weekly", "monthly", "quarterly", "yearly"]
         if period not in valid_periods:
-            raise RuntimeError(f"Invalid period: {period}. Must be one of: {', '.join(valid_periods)}")
+            valid = ", ".join(valid_periods)
+            raise RuntimeError(f"Invalid period: {period}. Must be one of: {valid}")
         note_type = args.get("type", "content")
         if note_type not in ("content", "metadata"):
             raise RuntimeError(f"Invalid type: {note_type}. Must be 'content' or 'metadata'")
@@ -464,7 +498,8 @@ class RecentPeriodicNotesToolHandler(ToolHandler):
         period = args["period"]
         valid_periods = ["daily", "weekly", "monthly", "quarterly", "yearly"]
         if period not in valid_periods:
-            raise RuntimeError(f"Invalid period: {period}. Must be one of: {', '.join(valid_periods)}")
+            valid = ", ".join(valid_periods)
+            raise RuntimeError(f"Invalid period: {period}. Must be one of: {valid}")
         limit = args.get("limit", 5)
         if not isinstance(limit, int) or limit < 1:
             raise RuntimeError(f"Invalid limit: {limit}. Must be a positive integer")
@@ -495,7 +530,9 @@ class RecentChangesToolHandler(ToolHandler):
                     },
                     "days": {
                         "type": "integer",
-                        "description": "Only include files modified within this many days (default: 90).",
+                        "description": (
+                            "Only include files modified within this many days (default: 90)."
+                        ),
                         "minimum": 1,
                         "default": 90,
                     },

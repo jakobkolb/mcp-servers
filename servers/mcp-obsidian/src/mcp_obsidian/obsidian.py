@@ -86,7 +86,7 @@ class Obsidian:
 
     def search(self, query: str, context_length: int = 100) -> Any:
         url = f"{self.get_base_url()}/search/simple/"
-        params = {"query": query, "contextLength": context_length}
+        params: dict[str, str | int] = {"query": query, "contextLength": context_length}
 
         def call_fn() -> Any:
             response = requests.post(
@@ -193,7 +193,7 @@ class Obsidian:
         self, period: str, limit: int = 5, include_content: bool = False
     ) -> Any:
         url = f"{self.get_base_url()}/periodic/{period}/recent"
-        params = {"limit": limit, "includeContent": include_content}
+        params: dict[str, int] = {"limit": limit, "includeContent": int(include_content)}
 
         def call_fn() -> Any:
             response = requests.get(
@@ -218,9 +218,7 @@ class Obsidian:
             ]
         )
         url = f"{self.get_base_url()}/search/"
-        headers = self._get_headers() | {
-            "Content-Type": "application/vnd.olrapi.dataview.dql+txt"
-        }
+        headers = self._get_headers() | {"Content-Type": "application/vnd.olrapi.dataview.dql+txt"}
 
         def call_fn() -> Any:
             response = requests.post(
