@@ -206,6 +206,9 @@ tempCodeRunnerFile.py
 # Ruff stuff:
 .ruff_cache/
 
+# Docker
+.dockerignore
+
 # PyPI configuration file
 .pypirc
 
