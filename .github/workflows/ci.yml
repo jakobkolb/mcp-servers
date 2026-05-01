@@ -28,3 +28,63 @@ jobs:
 
       - name: Test
         run: uv run pytest servers/ -v --tb=short
+
+  discover-servers:
+    runs-on: ubuntu-latest
+    outputs:
+      servers: ${{ steps.find.outputs.servers }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Find servers with Dockerfiles
+        id: find
+        run: |
+          servers=$(for d in servers/*/; do
+            [ -f "${d}Dockerfile" ] && basename "$d"
+          done | jq -R . | jq -sc .)
+          echo "servers=$servers" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: [lint-and-test, discover-servers]
+    if: needs.discover-servers.outputs.servers != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        server: ${{ fromJson(needs.discover-servers.outputs.servers) }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/${{ matrix.server }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,prefix=,format=short,enable={{is_default_branch}}
+            type=ref,event=pr
+
+      - name: Build (PR) / Build and push (main)
+        uses: docker/build-push-action@v6
+        with:
+          context: servers/${{ matrix.server }}
+          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
