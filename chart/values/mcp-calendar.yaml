@@ -7,6 +7,11 @@ image:
 
 ingress:
   host: calendar.mcp.yourdomain.com
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/auth-type: basic
+    nginx.ingress.kubernetes.io/auth-secret: calendar-basic-auth
+    nginx.ingress.kubernetes.io/auth-realm: "MCP Authentication Required"
 
 env:
   CALENDAR_CONFIG: /config/config.yaml
