@@ -9,5 +9,7 @@ COPY src/ src/
 
 RUN uv sync --no-dev
 
+EXPOSE 8000
+
 # Pass OBSIDIAN_API_KEY, OBSIDIAN_HOST, OBSIDIAN_PORT at runtime via -e flags
 CMD ["uv", "run", "mcp-obsidian"]

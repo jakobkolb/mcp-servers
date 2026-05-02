@@ -4,8 +4,9 @@ DOCKERSERVERS := $(foreach d,$(SERVERS),$(if $(wildcard $(d)/Dockerfile),$(d)))
 # Scaffold directories (no production code) excluded from static analysis
 SCAFFOLD      := servers/example
 MYPY_SRCS     := $(foreach d,$(filter-out $(SCAFFOLD),$(DOCKERSERVERS)),$(d)/src/)
+CHART_DIR     := chart/mcp-server
 
-.PHONY: install lint test build list-servers clean
+.PHONY: install lint test build list-servers helm-lint helm-test helm clean
 
 install:
 	uv sync --all-packages
@@ -36,6 +37,20 @@ else
 		docker build -t mcp-$$name:latest $$server; \
 	done
 endif
+
+# Requires: helm, kubeconform
+helm-lint:
+	helm lint $(CHART_DIR)
+	helm template test $(CHART_DIR) \
+		--set image.repository=test \
+		--set ingress.host=test.example.com \
+		| kubeconform -strict -summary
+
+# Requires: helm, helm-unittest plugin (helm plugin install https://github.com/helm-unittest/helm-unittest)
+helm-test:
+	helm unittest $(CHART_DIR)
+
+helm: helm-lint helm-test
 
 clean:
 	find . -type d -name __pycache__ -exec rm -rf {} +

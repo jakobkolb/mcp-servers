@@ -1,11 +1,18 @@
 import logging
 import os
-from collections.abc import Sequence
+from collections.abc import AsyncIterator, Sequence
+from contextlib import asynccontextmanager
 from typing import Any
 
+import uvicorn
 from dotenv import load_dotenv
 from mcp.server import Server
+from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from mcp.types import EmbeddedResource, ImageContent, TextContent, Tool
+from starlette.applications import Starlette
+from starlette.requests import Request
+from starlette.responses import JSONResponse
+from starlette.routing import Mount, Route
 
 load_dotenv()
 
@@ -20,7 +27,6 @@ if not os.getenv("OBSIDIAN_API_KEY"):
     )
 
 app = Server("mcp-obsidian")
-
 _handlers = {h.name: h for h in tools.ALL_HANDLERS}
 
 
@@ -45,8 +51,32 @@ async def call_tool(
         raise RuntimeError(f"Error: {str(e)}") from e
 
 
-async def main() -> None:
-    from mcp.server.stdio import stdio_server
+_session_manager = StreamableHTTPSessionManager(
+    app=app,
+    event_store=None,
+    json_response=False,
+    stateless=True,
+)
 
-    async with stdio_server() as (read_stream, write_stream):
-        await app.run(read_stream, write_stream, app.create_initialization_options())
+
+async def _health(_: Request) -> JSONResponse:
+    return JSONResponse({"status": "ok"})
+
+
+@asynccontextmanager
+async def _lifespan(_: Starlette) -> AsyncIterator[None]:
+    async with _session_manager.run():
+        yield
+
+
+http_app = Starlette(
+    routes=[
+        Route("/health", _health),
+        Mount("/mcp", app=_session_manager.handle_request),
+    ],
+    lifespan=_lifespan,
+)
+
+
+def main() -> None:
+    uvicorn.run(http_app, host="0.0.0.0", port=int(os.getenv("PORT", "8000")))

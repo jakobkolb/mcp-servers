@@ -1,0 +1,25 @@
+suite: service
+templates:
+  - service.yaml
+tests:
+  - it: renders a ClusterIP Service on port 8000
+    asserts:
+      - isKind:
+          of: Service
+      - equal:
+          path: spec.type
+          value: ClusterIP
+      - equal:
+          path: spec.ports[0].port
+          value: 8000
+      - equal:
+          path: spec.ports[0].targetPort
+          value: http
+
+  - it: respects custom service port
+    set:
+      service.port: 9000
+    asserts:
+      - equal:
+          path: spec.ports[0].port
+          value: 9000

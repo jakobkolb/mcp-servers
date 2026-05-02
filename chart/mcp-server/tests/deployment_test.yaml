@@ -1,0 +1,87 @@
+suite: deployment
+templates:
+  - deployment.yaml
+tests:
+  - it: renders a Deployment with correct image
+    set:
+      image.repository: ghcr.io/jakobkolb/mcp-obsidian
+      image.tag: "abc1234"
+    asserts:
+      - isKind:
+          of: Deployment
+      - equal:
+          path: spec.replicas
+          value: 1
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/jakobkolb/mcp-obsidian:abc1234
+      - equal:
+          path: spec.template.spec.containers[0].ports[0].containerPort
+          value: 8000
+
+  - it: sets PORT env var from service.port
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: PORT
+            value: "8000"
+
+  - it: injects plain env vars
+    set:
+      env:
+        OBSIDIAN_HOST: "192.168.1.10"
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OBSIDIAN_HOST
+            value: "192.168.1.10"
+
+  - it: injects secret env vars via secretKeyRef
+    set:
+      secretEnv:
+        OBSIDIAN_API_KEY: "secret"
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OBSIDIAN_API_KEY
+            valueFrom:
+              secretKeyRef:
+                name: RELEASE-NAME-mcp-server-secrets
+                key: OBSIDIAN_API_KEY
+
+  - it: mounts config file volume when configFile enabled
+    set:
+      configFile.enabled: true
+      configFile.mountPath: /config/config.yaml
+      configFile.content: "calendars: []"
+    asserts:
+      - isNotEmpty:
+          path: spec.template.spec.containers[0].volumeMounts
+      - isNotEmpty:
+          path: spec.template.spec.volumes
+
+  - it: passes config path via env when configFile enabled alongside env
+    set:
+      configFile.enabled: true
+      configFile.mountPath: /config/config.yaml
+      configFile.content: "calendars: []"
+      env:
+        CALENDAR_CONFIG: /config/config.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: CALENDAR_CONFIG
+            value: /config/config.yaml
+
+  - it: skips volume mount when configFile disabled
+    set:
+      configFile.enabled: false
+    asserts:
+      - isNull:
+          path: spec.template.spec.containers[0].volumeMounts
+      - isNull:
+          path: spec.template.spec.volumes
