@@ -14,4 +14,17 @@ Add to Claude Desktop (~/Library/Application Support/Claude/claude_desktop_confi
       }
     }
   }
+
+If the server requires an API key, add an Authorization header:
+
+  {
+    "mcpServers": {
+      "{{ .Release.Name }}": {
+        "url": "https://{{ .Values.ingress.host }}/mcp",
+        "headers": {
+          "Authorization": "Bearer <your-api-key>"
+        }
+      }
+    }
+  }
 {{- end }}

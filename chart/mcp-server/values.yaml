@@ -29,7 +29,7 @@ env: {}
 secretEnv: {}
   # OBSIDIAN_API_KEY: "my-api-key"
 
-# Mount a YAML/text config file (used by mcp-calendar for CalDAV config)
+# Mount a config file from values into the container (content stored in a ConfigMap)
 configFile:
   enabled: false
   mountPath: /config/config.yaml

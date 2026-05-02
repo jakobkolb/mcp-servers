@@ -36,10 +36,6 @@ spec:
                   name: {{ include "mcp-server.fullname" $ }}-secrets
                   key: {{ $key }}
             {{- end }}
-            {{- if .Values.configFile.enabled }}
-            - name: CALENDAR_CONFIG
-              value: {{ .Values.configFile.mountPath | quote }}
-            {{- end }}
           {{- if .Values.configFile.enabled }}
           volumeMounts:
             - name: config

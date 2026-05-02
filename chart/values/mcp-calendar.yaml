@@ -8,6 +8,9 @@ image:
 ingress:
   host: calendar.mcp.yourdomain.com
 
+env:
+  CALENDAR_CONFIG: /config/config.yaml
+
 configFile:
   enabled: true
   mountPath: /config/config.yaml
