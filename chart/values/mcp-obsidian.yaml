@@ -1,0 +1,17 @@
+# Example values for deploying mcp-obsidian
+# helm upgrade --install obsidian chart/mcp-server -f chart/values/mcp-obsidian.yaml
+
+image:
+  repository: ghcr.io/jakobkolb/mcp-obsidian
+  tag: "latest"
+
+ingress:
+  host: obsidian.mcp.yourdomain.com
+
+env:
+  OBSIDIAN_HOST: "192.168.1.100"
+  OBSIDIAN_PORT: "27124"
+  OBSIDIAN_PROTOCOL: "https"
+
+secretEnv:
+  OBSIDIAN_API_KEY: "<your-obsidian-api-key>"

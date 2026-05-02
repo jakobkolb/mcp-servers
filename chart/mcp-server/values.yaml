@@ -1,0 +1,66 @@
+replicaCount: 1
+
+image:
+  repository: ""
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+nameOverride: ""
+fullnameOverride: ""
+
+service:
+  port: 8000
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  host: ""
+  tls: true
+  # Auto-generated from release name when empty
+  tlsSecretName: ""
+
+# Plain env vars (non-sensitive)
+env: {}
+  # OBSIDIAN_HOST: "127.0.0.1"
+
+# Sensitive env vars — stored in a K8s Secret and injected as env vars
+secretEnv: {}
+  # OBSIDIAN_API_KEY: "my-api-key"
+
+# Mount a YAML/text config file (used by mcp-calendar for CalDAV config)
+configFile:
+  enabled: false
+  mountPath: /config/config.yaml
+  content: ""
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 250m
+    memory: 256Mi
+
+livenessProbe:
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 30
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 10
+  failureThreshold: 3
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}

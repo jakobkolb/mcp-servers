@@ -1,0 +1,56 @@
+suite: ingress
+templates:
+  - ingress.yaml
+tests:
+  - it: renders an Ingress with correct host
+    set:
+      ingress.enabled: true
+      ingress.host: obsidian.mcp.example.com
+    asserts:
+      - isKind:
+          of: Ingress
+      - equal:
+          path: spec.rules[0].host
+          value: obsidian.mcp.example.com
+      - equal:
+          path: spec.ingressClassName
+          value: nginx
+
+  - it: sets TLS with auto-generated secret name
+    set:
+      ingress.enabled: true
+      ingress.host: obsidian.mcp.example.com
+      ingress.tls: true
+    asserts:
+      - equal:
+          path: spec.tls[0].hosts[0]
+          value: obsidian.mcp.example.com
+      - equal:
+          path: spec.tls[0].secretName
+          value: RELEASE-NAME-mcp-server-tls
+
+  - it: uses provided tlsSecretName when set
+    set:
+      ingress.enabled: true
+      ingress.host: obsidian.mcp.example.com
+      ingress.tls: true
+      ingress.tlsSecretName: my-wildcard-tls
+    asserts:
+      - equal:
+          path: spec.tls[0].secretName
+          value: my-wildcard-tls
+
+  - it: skips ingress when disabled
+    set:
+      ingress.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: adds cert-manager annotation by default
+    set:
+      ingress.enabled: true
+      ingress.host: test.example.com
+    asserts:
+      - isNotEmpty:
+          path: metadata.annotations

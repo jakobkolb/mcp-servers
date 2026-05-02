@@ -1,0 +1,11 @@
+{{- if .Values.configFile.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "mcp-server.fullname" . }}-config
+  labels:
+    {{- include "mcp-server.labels" . | nindent 4 }}
+data:
+  {{ base .Values.configFile.mountPath }}: |
+    {{- .Values.configFile.content | nindent 4 }}
+{{- end }}

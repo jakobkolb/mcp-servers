@@ -1,0 +1,17 @@
+MCP server {{ include "mcp-server.fullname" . }} deployed.
+
+{{- if .Values.ingress.enabled }}
+
+MCP endpoint: https://{{ .Values.ingress.host }}/mcp
+Health check:  https://{{ .Values.ingress.host }}/health
+
+Add to Claude Desktop (~/Library/Application Support/Claude/claude_desktop_config.json):
+
+  {
+    "mcpServers": {
+      "{{ .Release.Name }}": {
+        "url": "https://{{ .Values.ingress.host }}/mcp"
+      }
+    }
+  }
+{{- end }}

@@ -1,0 +1,29 @@
+# Example values for deploying mcp-calendar
+# helm upgrade --install calendar chart/mcp-server -f chart/values/mcp-calendar.yaml
+
+image:
+  repository: ghcr.io/jakobkolb/mcp-calendar
+  tag: "latest"
+
+ingress:
+  host: calendar.mcp.yourdomain.com
+
+configFile:
+  enabled: true
+  mountPath: /config/config.yaml
+  content: |
+    calendars:
+      - type: icloud
+        name: personal
+        username: user@icloud.com
+        password: "<your-app-specific-password>"
+      - type: google
+        name: work
+        username: user@gmail.com
+        password: "<your-app-specific-password>"
+      - type: nextcloud
+        name: shared
+        url: https://cloud.example.com
+        username: alice
+        password: "<your-password>"
+        calendar_name: Family
