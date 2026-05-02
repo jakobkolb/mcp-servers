@@ -1,11 +1,12 @@
 {{- if .Values.configFile.enabled }}
 apiVersion: v1
-kind: ConfigMap
+kind: Secret
 metadata:
   name: {{ include "mcp-server.fullname" . }}-config
   labels:
     {{- include "mcp-server.labels" . | nindent 4 }}
-data:
+type: Opaque
+stringData:
   {{ base .Values.configFile.mountPath }}: |
     {{- .Values.configFile.content | nindent 4 }}
 {{- end }}
