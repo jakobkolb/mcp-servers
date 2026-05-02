@@ -9,6 +9,7 @@ Each server lives under `servers/<name>/`, ships as a Docker container, and is m
 | Server | Type | Description |
 |--------|------|-------------|
 | [mcp-obsidian](servers/mcp-obsidian/) | Tool + Resource | Interact with Obsidian via the Local REST API plugin |
+| [mcp-calendar](servers/mcp-calendar/) | Tool | Unified CalDAV view of iCloud, Gmail, and Nextcloud calendars |
 
 ## Prerequisites
 
