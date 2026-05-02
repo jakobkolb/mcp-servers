@@ -14,7 +14,13 @@ dev = [
     "pytest-asyncio>=0.24",
     "pytest-mock>=3.14",
     "types-requests>=2.32",
+    "types-PyYAML>=6.0",
 ]
+
+[tool.pytest.ini_options]
+# importlib mode avoids test-module name collisions across server packages
+addopts = "--import-mode=importlib"
+asyncio_mode = "auto"
 
 [tool.ruff]
 line-length = 100
@@ -35,6 +41,16 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 # mcp's Server decorators (list_tools, call_tool) are untyped at runtime
-module = ["mcp_obsidian.server", "example_server.server"]
+module = ["mcp_obsidian.server", "example_server.server", "mcp_calendar.server"]
 disallow_untyped_decorators = false
 disallow_untyped_calls = false
+
+[[tool.mypy.overrides]]
+# caldav and icalendar use lazy imports / are partially typed; disable strict checks
+module = ["mcp_calendar.backends"]
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+# pyyaml ships types-PyYAML separately — suppress missing-stub noise
+module = ["yaml", "yaml.*"]
+ignore_missing_imports = true
