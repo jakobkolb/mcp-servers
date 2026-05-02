@@ -51,8 +51,8 @@ spec:
       {{- if .Values.configFile.enabled }}
       volumes:
         - name: config
-          configMap:
-            name: {{ include "mcp-server.fullname" . }}-config
+          secret:
+            secretName: {{ include "mcp-server.fullname" . }}-config
       {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
