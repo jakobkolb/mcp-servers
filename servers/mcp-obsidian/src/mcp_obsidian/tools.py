@@ -313,8 +313,9 @@ class PatchContentToolHandler(ToolHandler):
                     "target": {
                         "type": "string",
                         "description": (
-                            "Target identifier: heading path,"
-                            " block reference, or frontmatter field."
+                            "Target identifier: heading text, frontmatter field,"
+                            " or block ID. For blocks, omit the leading ^ caret"
+                            " (use 'myblock', not '^myblock')."
                         ),
                     },
                     "content": {

@@ -133,6 +133,9 @@ class Obsidian:
         self, filepath: str, operation: str, target_type: str, target: str, content: str
     ) -> None:
         url = f"{self.get_base_url()}/vault/{filepath}"
+        # Plugin expects bare block IDs; strip the leading ^ Obsidian shows in the UI
+        if target_type == "block":
+            target = target.lstrip("^")
         headers = self._get_headers() | {
             "Content-Type": "text/markdown",
             "Operation": operation,
@@ -192,19 +195,51 @@ class Obsidian:
     def get_recent_periodic_notes(
         self, period: str, limit: int = 5, include_content: bool = False
     ) -> Any:
-        url = f"{self.get_base_url()}/periodic/{period}/recent"
-        params: dict[str, int] = {"limit": limit, "includeContent": int(include_content)}
+        # The plugin has no "list recent" endpoint; reconstruct via Dataview DQL.
+        if period == "daily":
+            # Dataview sets file.day for all date-named notes
+            dql = f"TABLE file.mtime\nWHERE file.day\nSORT file.day DESC\nLIMIT {limit}"
+        else:
+            # Discover the folder from the current periodic note, then scope the query
+            folder = ""
+            try:
+                meta_headers = self._get_headers() | {"Accept": "application/vnd.olrapi.note+json"}
+                r = requests.get(
+                    f"{self.get_base_url()}/periodic/{period}/",
+                    headers=meta_headers,
+                    verify=self.verify_ssl,
+                    timeout=self.timeout,
+                )
+                r.raise_for_status()
+                path: str = r.json().get("path", "")
+                folder = path.rsplit("/", 1)[0] if "/" in path else ""
+            except Exception:
+                pass  # fall back to unscoped query
+            where = f'contains(file.folder, "{folder}")' if folder else "file.mtime"
+            dql = f"TABLE file.mtime\nWHERE {where}\nSORT file.mtime DESC\nLIMIT {limit}"
+
+        url = f"{self.get_base_url()}/search/"
+        headers = self._get_headers() | {"Content-Type": "application/vnd.olrapi.dataview.dql+txt"}
 
         def call_fn() -> Any:
-            response = requests.get(
+            response = requests.post(
                 url,
-                headers=self._get_headers(),
-                params=params,
+                headers=headers,
+                data=dql.encode("utf-8"),
                 verify=self.verify_ssl,
                 timeout=self.timeout,
             )
             response.raise_for_status()
-            return response.json()
+            results = response.json()
+            if include_content and isinstance(results, list):
+                for item in results:
+                    filepath = str(item.get("filename", ""))
+                    if filepath:
+                        try:
+                            item["content"] = self.get_file_contents(filepath)
+                        except Exception:
+                            item["content"] = None
+            return results
 
         return self._safe_call(call_fn)
 

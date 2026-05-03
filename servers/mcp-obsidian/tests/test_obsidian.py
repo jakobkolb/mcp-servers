@@ -167,3 +167,50 @@ def test_get_recent_changes(api: Obsidian, mocker: pytest.MonkeyPatch) -> None:
     sent_data = mock_post.call_args[1]["data"].decode()
     assert "LIMIT 5" in sent_data
     assert "dur(7 days)" in sent_data
+
+
+def test_get_recent_periodic_notes_daily(api: Obsidian, mocker: pytest.MonkeyPatch) -> None:
+    mock_post = mocker.patch("requests.post")
+    mock_post.return_value.json.return_value = [{"filename": "2026-05-01.md"}]
+    mock_post.return_value.raise_for_status = lambda: None
+
+    result = api.get_recent_periodic_notes("daily", limit=3)
+    sent_data = mock_post.call_args[1]["data"].decode()
+    assert "file.day" in sent_data
+    assert "LIMIT 3" in sent_data
+    assert result[0]["filename"] == "2026-05-01.md"
+
+
+def test_get_recent_periodic_notes_weekly(api: Obsidian, mocker: pytest.MonkeyPatch) -> None:
+    mock_get = mocker.patch("requests.get")
+    mock_get.return_value.json.return_value = {"path": "Journals/Weekly/2026-W18.md"}
+    mock_get.return_value.raise_for_status = lambda: None
+
+    mock_post = mocker.patch("requests.post")
+    mock_post.return_value.json.return_value = [{"filename": "2026-W18.md"}]
+    mock_post.return_value.raise_for_status = lambda: None
+
+    result = api.get_recent_periodic_notes("weekly", limit=2)
+    dql = mock_post.call_args[1]["data"].decode()
+    assert "Journals/Weekly" in dql
+    assert "LIMIT 2" in dql
+    assert result[0]["filename"] == "2026-W18.md"
+
+
+def test_patch_content_strips_block_caret(api: Obsidian, mocker: pytest.MonkeyPatch) -> None:
+    mock_patch = mocker.patch("requests.patch")
+    mock_patch.return_value.raise_for_status = lambda: None
+
+    api.patch_content("note.md", "replace", "block", "^myblock", "new content")
+    headers = mock_patch.call_args[1]["headers"]
+    # ^ should be stripped before URL-encoding
+    assert headers["Target"] == "myblock"
+
+
+def test_patch_content_heading_unchanged(api: Obsidian, mocker: pytest.MonkeyPatch) -> None:
+    mock_patch = mocker.patch("requests.patch")
+    mock_patch.return_value.raise_for_status = lambda: None
+
+    api.patch_content("note.md", "append", "heading", "## Tasks", "- item")
+    headers = mock_patch.call_args[1]["headers"]
+    assert headers["Target"] == "%23%23%20Tasks"
