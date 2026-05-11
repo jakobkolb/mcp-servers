@@ -4,7 +4,9 @@ version = "0.1.0"
 description = "Scaffold MCP server — copy and rename to build a new server"
 requires-python = ">=3.12"
 dependencies = [
-    "mcp>=1.0.0",
+    "mcp>=1.6.0",
+    "starlette>=0.40",
+    "uvicorn>=0.30",
 ]
 
 [build-system]
