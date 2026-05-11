@@ -2,8 +2,8 @@ import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-import uvicorn
 import mcp.types as types
+import uvicorn
 from mcp.server import Server
 from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from starlette.applications import Starlette
