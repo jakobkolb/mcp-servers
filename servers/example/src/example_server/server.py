@@ -16,7 +16,27 @@ server: Server = Server("example-server")
 
 @server.list_tools()
 async def list_tools() -> list[types.Tool]:
-    return []
+    return [
+        types.Tool(
+            name="hello",
+            description="Returns a greeting for the given name.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "Name to greet"},
+                },
+                "required": ["name"],
+            },
+        )
+    ]
+
+
+@server.call_tool()
+async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
+    if name == "hello":
+        who = arguments.get("name", "world")
+        return [types.TextContent(type="text", text=f"Hello, {who}!")]
+    raise ValueError(f"Unknown tool: {name}")
 
 
 @server.list_resources()
