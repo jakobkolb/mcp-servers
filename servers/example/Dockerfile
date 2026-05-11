@@ -9,4 +9,6 @@ COPY src/ src/
 
 RUN uv sync --no-dev
 
-CMD ["uv", "run", "python", "-m", "example_server.server"]
+EXPOSE 8000
+
+CMD ["uv", "run", "example-server"]

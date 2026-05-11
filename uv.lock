@@ -300,7 +300,7 @@ name = "example-server"
 version = "0.1.0"
 source = { editable = "servers/example" }
 dependencies = [
-    { name = "mcp" },
+    { name = "mcp", extra = ["cli"] },
 ]
 
 [package.dev-dependencies]
@@ -310,7 +310,7 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "mcp", specifier = ">=1.0.0" }]
+requires-dist = [{ name = "mcp", extras = ["cli"], specifier = ">=1.6.0" }]
 
 [package.metadata.requires-dev]
 dev = [
