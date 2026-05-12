@@ -6,7 +6,7 @@ SCAFFOLD      := servers/example
 MYPY_SRCS     := $(foreach d,$(filter-out $(SCAFFOLD),$(DOCKERSERVERS)),$(d)/src/)
 CHART_DIR     := chart/mcp-server
 
-.PHONY: install lint test build list-servers helm-lint helm-test helm clean
+.PHONY: install lint test build list-servers helm-lint helm-test helm clean test-watch
 
 install:
 	uv sync --all-packages
@@ -21,6 +21,13 @@ ifdef SERVER
 	uv run pytest servers/$(SERVER) -v --tb=short
 else
 	uv run pytest servers/ -v --tb=short
+endif
+
+test-watch:
+ifdef SERVER
+	uv run ptw servers/$(SERVER) --now --patterns '*.py,pyproject.toml' --testmon -v --tb=short servers/$(SERVER)
+else
+	uv run ptw servers --now --patterns '*.py,pyproject.toml' --testmon -v --tb=short servers/
 endif
 
 # Outputs a JSON array of server names that have a Dockerfile (consumed by CI).
