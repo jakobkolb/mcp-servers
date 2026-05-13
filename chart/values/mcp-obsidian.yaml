@@ -18,26 +18,83 @@ ingress:
 
 env:
   VAULT_PATH: /vault
-  MCP_TRANSPORT: sse
+  MCP_TRANSPORT: streamable-http
   MCP_PORT: "8080"
   LOG_LEVEL: INFO
 
-# Example shared vault volume and sync sidecar. Choose a headless Obsidian
-# image/configuration that matches your sync setup before uncommenting.
-#
-# extraVolumeMounts:
-#   - name: vault
-#     mountPath: /vault
-#
-# extraVolumes:
-#   - name: vault
-#     persistentVolumeClaim:
-#       claimName: obsidian-vault
-#
-# extraContainers:
-#   - name: obsidian-headless
-#     image: "<your-obsidian-headless-image>"
-#     imagePullPolicy: IfNotPresent
-#     volumeMounts:
-#       - name: vault
-#         mountPath: /vault
+extraVolumeMounts:
+  - name: vault
+    mountPath: /vault
+
+extraVolumes:
+  - name: vault
+    persistentVolumeClaim:
+      claimName: obsidian-vault
+  - name: obsidian-headless-state
+    persistentVolumeClaim:
+      claimName: obsidian-headless-state
+
+# Requires a secret named obsidian-headless-auth with keys:
+# email, password, vault, sync-password.
+extraContainers:
+  - name: obsidian-headless
+    image: node:22-bookworm-slim
+    imagePullPolicy: IfNotPresent
+    command:
+      - /bin/sh
+      - -c
+    args:
+      - |
+        set -eu
+
+        mkdir -p "${VAULT_PATH}"
+        mkdir -p "${HOME}"
+        npm install -g obsidian-headless
+
+        if ! ob sync-list-remote >/dev/null 2>&1; then
+          ob login \
+            --email "${OBSIDIAN_EMAIL}" \
+            --password "${OBSIDIAN_PASSWORD}"
+        fi
+
+        if ! ob sync-status --path "${VAULT_PATH}" >/dev/null 2>&1; then
+          ob sync-setup \
+            --vault "${OBSIDIAN_VAULT}" \
+            --path "${VAULT_PATH}" \
+            --password "${OBSIDIAN_SYNC_PASSWORD}" \
+            --device-name "${OBSIDIAN_DEVICE_NAME}"
+        fi
+
+        exec ob sync --path "${VAULT_PATH}" --continuous
+    env:
+      - name: VAULT_PATH
+        value: /vault
+      - name: HOME
+        value: /obsidian-home
+      - name: OBSIDIAN_DEVICE_NAME
+        value: mcp-obsidian
+      - name: OBSIDIAN_EMAIL
+        valueFrom:
+          secretKeyRef:
+            name: obsidian-headless-auth
+            key: email
+      - name: OBSIDIAN_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: obsidian-headless-auth
+            key: password
+      - name: OBSIDIAN_VAULT
+        valueFrom:
+          secretKeyRef:
+            name: obsidian-headless-auth
+            key: vault
+      - name: OBSIDIAN_SYNC_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: obsidian-headless-auth
+            key: sync-password
+    volumeMounts:
+      - name: vault
+        mountPath: /vault
+      - name: obsidian-headless-state
+        mountPath: /obsidian-home
