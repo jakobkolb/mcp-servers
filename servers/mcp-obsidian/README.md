@@ -112,6 +112,8 @@ Output: path, files, directories, total_files, total_dirs
 #### `search_notes`
 Full-text regex search across vault `.md` files. Falls back to literal match when query is not valid regex.
 
+When `QMD_URL` is set, `search_notes` will delegate to the [qmd](https://github.com/tobi/qmd) sidecar for semantic / lexical search — see [qmd sidecar](#qmd-sidecar-semantic-search) below. **Not yet implemented** — the config field exists but delegation is not wired up yet.
+
 ```
 Input:  query (str, required)
         search_content (bool, default true)
@@ -331,6 +333,61 @@ The task engine is configured for a GTD-style vault with these defaults:
 
 **Context tags used in the vault:**
 `#context/pc`, `#context/work`, `#context/kids`, `#context/phone`, `#context/home`, `#context/errands`, `#context/reading`, `#context/watchlist`
+
+---
+
+## qmd sidecar (semantic search)
+
+[qmd](https://github.com/tobi/qmd) is a lightweight local search server that builds a vector index over a markdown directory and exposes it as an MCP server. Running it alongside mcp-obsidian enables semantic / full-text lexical search in addition to the built-in regex search.
+
+> **Status:** The `QMD_URL` config field is wired up but `search_notes` does not yet delegate to qmd. When the delegation is implemented, it will be documented here.
+
+### How it will work
+
+When `QMD_URL` is set, `search_notes` will try qmd first and fall back to regex on failure:
+
+1. **qmd** — POST the query to qmd's MCP endpoint. Returns semantically ranked results with snippets.
+2. **Regex fallback** — Always available. Walks all `.md` files, applies `re.search`. Score is `1.0` for case-sensitive, `0.5` for case-insensitive match.
+
+The `search_mode` field in the `search_notes` response will reflect which backend was used (`"regex"` or `"qmd_semantic"`).
+
+### Running qmd locally
+
+```bash
+# Install qmd (requires Go)
+go install github.com/tobi/qmd@latest
+
+# Start qmd pointing at your vault
+qmd serve --dir /path/to/vault --port 8181
+```
+
+Then set `QMD_URL=http://localhost:8181` when starting mcp-obsidian.
+
+### Kubernetes deployment
+
+Add qmd as a sidecar container in the same pod as mcp-obsidian so it shares the vault PVC:
+
+```yaml
+# In chart/values/mcp-obsidian.yaml — add to extraEnv and sidecars
+extraEnv:
+  - name: QMD_URL
+    value: http://localhost:8181
+
+# Add to the deployment as a sidecar (via extraContainers if supported,
+# or by extending the Helm chart values):
+sidecars:
+  - name: qmd
+    image: ghcr.io/tobi/qmd:latest
+    args: ["serve", "--dir", "/vault", "--port", "8181"]
+    ports:
+      - containerPort: 8181
+    volumeMounts:
+      - name: vault
+        mountPath: /vault
+        readOnly: true
+```
+
+Since both containers are in the same pod they share the vault PVC without needing `ReadWriteMany` — qmd gets a read-only view, mcp-obsidian keeps read-write access.
 
 ---
 
