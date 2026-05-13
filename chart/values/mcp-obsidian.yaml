@@ -22,6 +22,18 @@ env:
   MCP_PORT: "8080"
   LOG_LEVEL: INFO
 
+extraPersistentVolumeClaims:
+  - name: obsidian-vault
+    storageClassName: standard
+    accessModes:
+      - ReadWriteOnce
+    size: 5Gi
+  - name: obsidian-headless-state
+    storageClassName: standard
+    accessModes:
+      - ReadWriteOnce
+    size: 2Gi
+
 extraVolumeMounts:
   - name: vault
     mountPath: /vault
