@@ -24,6 +24,7 @@ class GetTasksInput(BaseModel):
     include_waiting: bool = True
     project_tasks_only: bool = False
     exclude_projects: bool = False
+    apply_sequencing: bool = True
 
 
 class CompleteTaskInput(BaseModel):
@@ -79,6 +80,11 @@ def get_tools() -> list[Tool]:
                     "include_waiting": {"type": "boolean", "default": True},
                     "project_tasks_only": {"type": "boolean", "default": False},
                     "exclude_projects": {"type": "boolean", "default": False},
+                    "apply_sequencing": {
+                        "type": "boolean",
+                        "default": True,
+                        "description": "Apply GTD sequencing to #project notes.",
+                    },
                 },
             },
         ),
@@ -169,6 +175,7 @@ def get_handlers(config: Config) -> dict[str, Callable[..., Any]]:
             args.include_waiting,
             args.project_tasks_only,
             args.exclude_projects,
+            args.apply_sequencing,
         )
 
     async def handle_complete_task(arguments: dict[str, Any]) -> dict[str, Any]:

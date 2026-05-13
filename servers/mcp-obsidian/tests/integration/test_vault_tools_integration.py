@@ -411,3 +411,165 @@ class TestAddTaskWorkflow:
         content = (task_vault / "inbox.md").read_text(encoding="utf-8")
         assert self._TASK_TEXT in content
         assert "#context/test" in content
+
+
+# ---------------------------------------------------------------------------
+# Sequencing vault + client
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def seq_vault(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    vault = tmp_path_factory.mktemp("seq_vault")
+    (vault / "Projects").mkdir()
+
+    # Project note: sequential section, parallel section, excluded section
+    (vault / "Projects" / "Sequential.md").write_text(
+        textwrap.dedent(
+            """\
+            ---
+            tags:
+              - project
+            ---
+
+            # Sequential Project
+
+            ## Planning
+
+            - [ ] Task A - first in section
+            - [ ] Task B - second in section
+
+            ## Parallel Tracks 🟰
+
+            - [ ] Parallel task 1
+            - [ ] Parallel task 2
+
+            ## Archive #exclude
+
+            - [ ] Should never surface
+            """
+        ),
+        encoding="utf-8",
+    )
+
+    # Project note: future-scheduled task is first in section — tests the ordering fix
+    (vault / "Projects" / "Deferred.md").write_text(
+        textwrap.dedent(
+            """\
+            ---
+            tags:
+              - project
+            ---
+
+            # Deferred Project
+
+            ## Todo
+
+            - [ ] Far future task ⏳ 2099-12-31
+            - [ ] Current task
+            """
+        ),
+        encoding="utf-8",
+    )
+
+    # Non-project daily note — sequencing must NOT apply here
+    (vault / "daily.md").write_text(
+        textwrap.dedent(
+            """\
+            # Daily
+
+            - [ ] Daily task 1
+            - [ ] Daily task 2
+            - [ ] Daily task 3
+            """
+        ),
+        encoding="utf-8",
+    )
+
+    return vault
+
+
+@pytest.fixture(scope="module")
+def seq_client(seq_vault: Path):
+    client = StdioMCPClient(str(seq_vault))
+    client.start()
+    client.initialize()
+    yield client
+    client.stop()
+
+
+# ---------------------------------------------------------------------------
+# TestProjectSequencing
+# ---------------------------------------------------------------------------
+
+
+class TestProjectSequencing:
+    """Verify GTD project sequencing: first task per section, parallel bypass, #exclude skip."""
+
+    def test_sequential_section_surfaces_only_first_task(self, seq_client: StdioMCPClient):
+        resp = seq_client.call_tool("get_tasks", {"project_tasks_only": True})
+        data = tool_payload(resp)
+
+        planning_tasks = [t for t in data["tasks"] if t.get("project_section") == "Planning"]
+        assert len(planning_tasks) == 1, (
+            f"Expected 1 Planning task (first only), got {len(planning_tasks)}: {planning_tasks}"
+        )
+        assert "Task A" in planning_tasks[0]["text"]
+
+    def test_parallel_section_surfaces_all_tasks(self, seq_client: StdioMCPClient):
+        resp = seq_client.call_tool("get_tasks", {"project_tasks_only": True})
+        data = tool_payload(resp)
+
+        parallel_tasks = [
+            t for t in data["tasks"] if "Parallel" in (t.get("project_section") or "")
+        ]
+        assert len(parallel_tasks) == 2, (
+            f"Expected 2 parallel tasks, got {len(parallel_tasks)}: {parallel_tasks}"
+        )
+
+    def test_excluded_section_never_surfaces(self, seq_client: StdioMCPClient):
+        resp = seq_client.call_tool("get_tasks", {"project_tasks_only": True})
+        data = tool_payload(resp)
+
+        excluded = [t for t in data["tasks"] if "Archive" in (t.get("project_section") or "")]
+        assert excluded == [], f"Excluded section tasks should never surface: {excluded}"
+
+    def test_non_project_note_not_sequenced(self, seq_client: StdioMCPClient):
+        """daily.md has no #project tag — all 3 tasks must appear regardless of sequencing."""
+        resp = seq_client.call_tool("get_tasks", {"exclude_projects": True})
+        data = tool_payload(resp)
+
+        assert data["total_tasks"] == 3, (
+            f"Expected all 3 daily tasks (no sequencing on non-project notes), "
+            f"got {data['total_tasks']}"
+        )
+
+    def test_future_scheduled_filtered_before_sequencing(self, seq_client: StdioMCPClient):
+        """With hide_future_scheduled=True the future task is removed BEFORE sequencing picks
+        the first task in the section — so the current task must surface."""
+        resp = seq_client.call_tool(
+            "get_tasks",
+            {"project_tasks_only": True, "hide_future_scheduled": True},
+        )
+        data = tool_payload(resp)
+
+        todo_tasks = [t for t in data["tasks"] if t.get("project_section") == "Todo"]
+        assert len(todo_tasks) == 1, (
+            f"Expected exactly 1 Todo task after filtering future task, got {len(todo_tasks)}"
+        )
+        assert "Current task" in todo_tasks[0]["text"], (
+            f"Expected 'Current task' to surface, got: {todo_tasks[0]['text']!r}"
+        )
+
+    def test_apply_sequencing_false_shows_all_project_tasks(self, seq_client: StdioMCPClient):
+        """apply_sequencing=False must bypass sequencing and return all open project tasks."""
+        resp = seq_client.call_tool(
+            "get_tasks",
+            {"project_tasks_only": True, "apply_sequencing": False},
+        )
+        data = tool_payload(resp)
+
+        planning_tasks = [t for t in data["tasks"] if t.get("project_section") == "Planning"]
+        assert len(planning_tasks) == 2, (
+            f"Expected both Planning tasks with apply_sequencing=False, got {len(planning_tasks)}"
+        )

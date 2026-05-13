@@ -60,12 +60,18 @@ def process_project_note(
     rel_path: str,
     page_fm: dict[str, Any],
     page_ctime: float,
+    hide_future_scheduled: bool = True,
+    apply_sequencing: bool = True,
 ) -> tuple[list[RawTask], bool]:
     all_tasks = collect_tasks_from_file(vault_root, rel_path, page_fm, page_ctime)
     open_tasks = [t for t in all_tasks if t.status == " "]
+    if hide_future_scheduled:
+        open_tasks = [t for t in open_tasks if not is_future_scheduled(t)]
     if not open_tasks:
         return [], False
-    return apply_project_sequencing(open_tasks), True
+    if apply_sequencing:
+        return apply_project_sequencing(open_tasks), True
+    return open_tasks, True
 
 
 def process_non_project_note(
@@ -124,6 +130,7 @@ def collect_all_tasks(
     include_waiting: bool = True,
     project_tasks_only: bool = False,
     exclude_projects: bool = False,
+    apply_sequencing: bool = True,
 ) -> dict[str, Any]:
     vault = Path(vault_root)
     tasks: list[dict[str, Any]] = []
@@ -150,7 +157,14 @@ def collect_all_tasks(
             continue
 
         if _is_project:
-            raw_tasks, has_na = process_project_note(vault_root, rel_path, fm, page_ctime)
+            raw_tasks, has_na = process_project_note(
+                vault_root,
+                rel_path,
+                fm,
+                page_ctime,
+                hide_future_scheduled=hide_future_scheduled,
+                apply_sequencing=apply_sequencing,
+            )
             if not has_na:
                 projects_without_na.append({"name": md_file.stem, "path": rel_path})
         else:
@@ -159,7 +173,7 @@ def collect_all_tasks(
             )
 
         for raw_task in raw_tasks:
-            if hide_future_scheduled and is_future_scheduled(raw_task):
+            if not _is_project and hide_future_scheduled and is_future_scheduled(raw_task):
                 continue
 
             group = assign_group(raw_task, raw_task.page_tags)
