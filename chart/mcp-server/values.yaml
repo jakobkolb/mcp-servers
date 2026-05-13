@@ -52,11 +52,20 @@ extraVolumeMounts: []
   # - name: vault
   #   mountPath: /vault
 
+# PersistentVolumeClaims created and owned by this release.
+# Reference them in extraVolumes using persistentVolumeClaim.claimName.
+extraPersistentVolumeClaims: []
+  # - name: vault
+  #   storageClassName: standard
+  #   accessModes:
+  #     - ReadWriteOnce
+  #   size: 10Gi
+
 # Additional pod volumes shared by the main container and any sidecars.
 extraVolumes: []
   # - name: vault
   #   persistentVolumeClaim:
-  #     claimName: obsidian-vault
+  #     claimName: vault
 
 # Additional containers that run in the same pod as the MCP server.
 extraContainers: []
