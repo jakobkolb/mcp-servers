@@ -36,11 +36,16 @@ spec:
                   name: {{ include "mcp-server.fullname" $ }}-secrets
                   key: {{ $key }}
             {{- end }}
-          {{- if .Values.configFile.enabled }}
+          {{- if or .Values.configFile.enabled .Values.extraVolumeMounts }}
           volumeMounts:
+            {{- if .Values.configFile.enabled }}
             - name: config
               mountPath: {{ dir .Values.configFile.mountPath }}
               readOnly: true
+            {{- end }}
+            {{- with .Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
           {{- end }}
           livenessProbe:
             {{- toYaml .Values.livenessProbe | nindent 12 }}
@@ -48,11 +53,19 @@ spec:
             {{- toYaml .Values.readinessProbe | nindent 12 }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
-      {{- if .Values.configFile.enabled }}
+        {{- with .Values.extraContainers }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- if or .Values.configFile.enabled .Values.extraVolumes }}
       volumes:
+        {{- if .Values.configFile.enabled }}
         - name: config
           secret:
             secretName: {{ include "mcp-server.fullname" . }}-config
+        {{- end }}
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
       {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:

@@ -85,3 +85,87 @@ tests:
           path: spec.template.spec.containers[0].volumeMounts
       - isNull:
           path: spec.template.spec.volumes
+
+  - it: mounts extra volumes on the main container
+    set:
+      extraVolumeMounts:
+        - name: vault
+          mountPath: /vault
+      extraVolumes:
+        - name: vault
+          persistentVolumeClaim:
+            claimName: obsidian-vault
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: vault
+            mountPath: /vault
+      - equal:
+          path: spec.template.spec.volumes[0].name
+          value: vault
+      - equal:
+          path: spec.template.spec.volumes[0].persistentVolumeClaim.claimName
+          value: obsidian-vault
+
+  - it: renders generic sidecar containers
+    set:
+      extraVolumes:
+        - name: vault
+          emptyDir: {}
+      extraContainers:
+        - name: sync
+          image: example/sync:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: VAULT_PATH
+              value: /vault
+          volumeMounts:
+            - name: vault
+              mountPath: /vault
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[1].name
+          value: sync
+      - equal:
+          path: spec.template.spec.containers[1].image
+          value: example/sync:latest
+      - contains:
+          path: spec.template.spec.containers[1].volumeMounts
+          content:
+            name: vault
+            mountPath: /vault
+
+  - it: combines config file volume with extra volumes
+    set:
+      configFile.enabled: true
+      configFile.mountPath: /config/config.yaml
+      configFile.content: "calendars: []"
+      extraVolumeMounts:
+        - name: vault
+          mountPath: /vault
+      extraVolumes:
+        - name: vault
+          emptyDir: {}
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: config
+            mountPath: /config
+            readOnly: true
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: vault
+            mountPath: /vault
+      - equal:
+          path: spec.template.spec.volumes[0].name
+          value: config
+      - equal:
+          path: spec.template.spec.volumes[1].name
+          value: vault
