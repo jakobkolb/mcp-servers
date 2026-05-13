@@ -5,6 +5,9 @@ image:
   repository: ghcr.io/jakobkolb/mcp-obsidian
   tag: "latest"
 
+service:
+  port: 8080
+
 ingress:
   host: obsidian.mcp.yourdomain.com
   annotations:
@@ -14,9 +17,27 @@ ingress:
     nginx.ingress.kubernetes.io/auth-realm: "MCP Authentication Required"
 
 env:
-  OBSIDIAN_HOST: "192.168.1.100"
-  OBSIDIAN_PORT: "27124"
-  OBSIDIAN_PROTOCOL: "https"
+  VAULT_PATH: /vault
+  MCP_TRANSPORT: sse
+  MCP_PORT: "8080"
+  LOG_LEVEL: INFO
 
-secretEnv:
-  OBSIDIAN_API_KEY: "<your-obsidian-api-key>"
+# Example shared vault volume and sync sidecar. Choose a headless Obsidian
+# image/configuration that matches your sync setup before uncommenting.
+#
+# extraVolumeMounts:
+#   - name: vault
+#     mountPath: /vault
+#
+# extraVolumes:
+#   - name: vault
+#     persistentVolumeClaim:
+#       claimName: obsidian-vault
+#
+# extraContainers:
+#   - name: obsidian-headless
+#     image: "<your-obsidian-headless-image>"
+#     imagePullPolicy: IfNotPresent
+#     volumeMounts:
+#       - name: vault
+#         mountPath: /vault

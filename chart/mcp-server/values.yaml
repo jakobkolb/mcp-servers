@@ -46,6 +46,26 @@ configFile:
   mountPath: /config/config.yaml
   content: ""
 
+# Additional volume mounts for the main MCP server container.
+# Use this with extraVolumes to share storage with sidecars.
+extraVolumeMounts: []
+  # - name: vault
+  #   mountPath: /vault
+
+# Additional pod volumes shared by the main container and any sidecars.
+extraVolumes: []
+  # - name: vault
+  #   persistentVolumeClaim:
+  #     claimName: obsidian-vault
+
+# Additional containers that run in the same pod as the MCP server.
+extraContainers: []
+  # - name: sync
+  #   image: example/sync:latest
+  #   volumeMounts:
+  #     - name: vault
+  #       mountPath: /vault
+
 resources:
   requests:
     cpu: 50m
