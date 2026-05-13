@@ -12,3 +12,23 @@ class NoteNotFoundError(VaultError):
 
 class NotANoteError(VaultError):
     """The path exists but is not a .md file."""
+
+
+class BatchTooLargeError(VaultError):
+    """read_multiple_notes called with more paths than MAX_BATCH_READ."""
+
+
+class PatchNoMatchError(VaultError):
+    """patch_note: old_string not found in file."""
+
+
+class PatchAmbiguousError(VaultError):
+    """patch_note: old_string matches multiple times and replace_all=False."""
+
+
+class FrontmatterError(VaultError):
+    """YAML parse or serialization error."""
+
+
+class TaskStateError(VaultError):
+    """Task is not in the expected state (e.g. already completed, line out of range)."""

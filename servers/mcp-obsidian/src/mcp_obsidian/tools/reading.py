@@ -1,15 +1,18 @@
 from __future__ import annotations
 
-import json
+import asyncio
+from collections.abc import Callable
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
-from mcp.server import Server
-from mcp.types import CallToolResult, TextContent, Tool
+from mcp.types import Tool
 from pydantic import BaseModel, field_validator
 
 from mcp_obsidian.config import Config
-from mcp_obsidian.errors import NotANoteError, NoteNotFoundError, VaultError, VaultPathError
+from mcp_obsidian.errors import BatchTooLargeError
 from mcp_obsidian.vault.io import Note, read_note
+from mcp_obsidian.vault.path import resolve
 
 
 class ReadNoteInput(BaseModel):
@@ -18,18 +21,36 @@ class ReadNoteInput(BaseModel):
 
     @field_validator("path")
     @classmethod
-    def path_not_empty(cls, value: str) -> str:
-        if not value.strip():
+    def path_not_empty(cls, v: str) -> str:
+        if not v.strip():
             raise ValueError("path must not be empty")
-        return value
+        return v
+
+
+class ReadMultipleNotesInput(BaseModel):
+    paths: list[str]
+    include_content: bool = True
+    include_frontmatter: bool = True
+
+
+class GetFrontmatterInput(BaseModel):
+    path: str
+
+
+class GetNotesInfoInput(BaseModel):
+    paths: list[str]
+
+
+class ListDirectoryInput(BaseModel):
+    path: str = ""
+    recursive: bool = False
 
 
 def _note_to_dict(note: Note, pretty_print: bool) -> dict[str, Any]:
     content = note.content
     if pretty_print and note.frontmatter:
-        frontmatter_lines = "\n".join(f"{key}: {value}" for key, value in note.frontmatter.items())
-        content = f"{frontmatter_lines}\n\n{note.content}"
-
+        fm_lines = "\n".join(f"{k}: {v}" for k, v in note.frontmatter.items())
+        content = f"{fm_lines}\n\n{note.content}"
     return {
         "path": note.path,
         "frontmatter": note.frontmatter,
@@ -40,67 +61,168 @@ def _note_to_dict(note: Note, pretty_print: bool) -> dict[str, Any]:
     }
 
 
-def _error_result(code: str, message: str) -> CallToolResult:
-    return CallToolResult(
-        isError=True,
-        content=[TextContent(type="text", text=f"{code}: {message}")],
-    )
-
-
-def register_reading_tools(server: Server, config: Config) -> None:
-    @server.call_tool()
-    async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
-        if name != "read_note":
-            return _error_result("NOT_IMPLEMENTED", f"Tool {name!r} is not implemented.")
-
-        try:
-            args = ReadNoteInput(**arguments)
-        except Exception as exc:
-            return _error_result("INVALID_ARGUMENTS", str(exc))
-
-        try:
-            note = read_note(config.vault_path, args.path)
-        except VaultPathError as exc:
-            return _error_result("INVALID_PATH", str(exc))
-        except NoteNotFoundError as exc:
-            return _error_result("NOT_FOUND", str(exc))
-        except NotANoteError as exc:
-            return _error_result("NOT_A_NOTE", str(exc))
-        except VaultError as exc:
-            return _error_result("VAULT_ERROR", str(exc))
-
-        return CallToolResult(
-            content=[
-                TextContent(
-                    type="text",
-                    text=json.dumps(_note_to_dict(note, args.pretty_print), ensure_ascii=False),
-                )
-            ]
-        )
-
-    @server.list_tools()
-    async def list_tools() -> list[Tool]:
-        return [
-            Tool(
-                name="read_note",
-                description=(
-                    "Read a single markdown note from the vault. Returns frontmatter, body "
-                    "content, raw content, and file metadata."
-                ),
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "path": {
-                            "type": "string",
-                            "description": "Vault-relative path to the note.",
-                        },
-                        "pretty_print": {
-                            "type": "boolean",
-                            "description": "Render frontmatter as key/value lines in content.",
-                            "default": False,
-                        },
-                    },
-                    "required": ["path"],
+def get_tools() -> list[Tool]:
+    return [
+        Tool(
+            name="read_note",
+            description="Read a single markdown note from the vault. Returns frontmatter, body content, raw content, and file metadata.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "Vault-relative path to the note (must end in .md)."},
+                    "pretty_print": {"type": "boolean", "description": "Render frontmatter as key/value lines in content.", "default": False},
                 },
+                "required": ["path"],
+            },
+        ),
+        Tool(
+            name="read_multiple_notes",
+            description="Batch read up to MAX_BATCH_READ notes concurrently. Per-note failures are captured in the error field, not raised.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "paths": {"type": "array", "items": {"type": "string"}, "description": "Vault-relative paths (max MAX_BATCH_READ)."},
+                    "include_content": {"type": "boolean", "default": True},
+                    "include_frontmatter": {"type": "boolean", "default": True},
+                },
+                "required": ["paths"],
+            },
+        ),
+        Tool(
+            name="get_frontmatter",
+            description="Return only the YAML frontmatter of a note. ~5% the cost of a full read. Use for filter passes.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "Vault-relative path."},
+                },
+                "required": ["path"],
+            },
+        ),
+        Tool(
+            name="get_notes_info",
+            description="Return filesystem-level metadata (mtime, ctime, size, is_note) without reading content.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "paths": {"type": "array", "items": {"type": "string"}},
+                },
+                "required": ["paths"],
+            },
+        ),
+        Tool(
+            name="list_directory",
+            description="List files and subdirectories in a vault folder. Cheaper than search_notes when the folder is known.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "Vault-relative folder path. Empty string = vault root.", "default": ""},
+                    "recursive": {"type": "boolean", "description": "If true, return the full subtree.", "default": False},
+                },
+            },
+        ),
+    ]
+
+
+def get_handlers(config: Config) -> dict[str, Callable[..., Any]]:
+    async def handle_read_note(arguments: dict[str, Any]) -> dict[str, Any]:
+        args = ReadNoteInput(**arguments)
+        note = await asyncio.to_thread(read_note, config.vault_path, args.path)
+        return _note_to_dict(note, args.pretty_print)
+
+    async def handle_read_multiple_notes(arguments: dict[str, Any]) -> dict[str, Any]:
+        args = ReadMultipleNotesInput(**arguments)
+        if len(args.paths) > config.max_batch_read:
+            raise BatchTooLargeError(
+                f"Too many paths: {len(args.paths)} > {config.max_batch_read} (MAX_BATCH_READ)"
             )
-        ]
+
+        async def _read_one(path: str) -> dict[str, Any]:
+            try:
+                note = await asyncio.to_thread(read_note, config.vault_path, path)
+                return {
+                    "path": note.path,
+                    "frontmatter": note.frontmatter if args.include_frontmatter else None,
+                    "content": note.content if args.include_content else None,
+                    "mtime": note.mtime,
+                    "size": note.size,
+                    "error": None,
+                }
+            except Exception as e:
+                return {"path": path, "frontmatter": None, "content": None, "mtime": None, "size": None, "error": str(e)}
+
+        notes = list(await asyncio.gather(*[_read_one(p) for p in args.paths]))
+        return {"notes": notes, "errors": sum(1 for n in notes if n["error"] is not None)}
+
+    async def handle_get_frontmatter(arguments: dict[str, Any]) -> dict[str, Any]:
+        args = GetFrontmatterInput(**arguments)
+        note = await asyncio.to_thread(read_note, config.vault_path, args.path)
+        return {"path": args.path, "frontmatter": note.frontmatter}
+
+    async def handle_get_notes_info(arguments: dict[str, Any]) -> dict[str, Any]:
+        args = GetNotesInfoInput(**arguments)
+
+        def _get_one(path: str) -> dict[str, Any]:
+            try:
+                abs_path = resolve(config.vault_path, path)
+                if not abs_path.exists():
+                    return {"path": path, "exists": False, "mtime": None, "ctime": None, "size": None, "is_note": False}
+                stat = abs_path.stat()
+                return {
+                    "path": path,
+                    "exists": True,
+                    "mtime": datetime.fromtimestamp(stat.st_mtime, tz=UTC).isoformat(),
+                    "ctime": datetime.fromtimestamp(stat.st_ctime, tz=UTC).isoformat(),
+                    "size": stat.st_size,
+                    "is_note": abs_path.suffix.lower() == ".md",
+                }
+            except Exception:
+                return {"path": path, "exists": False, "mtime": None, "ctime": None, "size": None, "is_note": False}
+
+        infos = list(await asyncio.gather(*[asyncio.to_thread(_get_one, p) for p in args.paths]))
+        return {"notes": infos}
+
+    async def handle_list_directory(arguments: dict[str, Any]) -> dict[str, Any]:
+        args = ListDirectoryInput(**arguments)
+        vault_root = Path(config.vault_path)
+
+        dir_abs = resolve(config.vault_path, args.path) if args.path else vault_root
+
+        files: list[dict[str, Any]] = []
+        directories: list[dict[str, str]] = []
+
+        entries = sorted(dir_abs.rglob("*") if args.recursive else dir_abs.iterdir())
+        for entry in entries:
+            if entry.name.startswith("."):
+                continue
+            rel = str(entry.relative_to(vault_root))
+            if entry.is_dir():
+                directories.append({"name": entry.name, "path": rel})
+            elif entry.is_file():
+                try:
+                    stat = entry.stat()
+                    files.append({
+                        "name": entry.name,
+                        "path": rel,
+                        "is_note": entry.suffix.lower() == ".md",
+                        "size": stat.st_size,
+                        "mtime": datetime.fromtimestamp(stat.st_mtime, tz=UTC).isoformat(),
+                    })
+                except OSError:
+                    continue
+
+        return {
+            "path": args.path,
+            "files": files,
+            "directories": directories,
+            "total_files": len(files),
+            "total_dirs": len(directories),
+        }
+
+    return {
+        "read_note": handle_read_note,
+        "read_multiple_notes": handle_read_multiple_notes,
+        "get_frontmatter": handle_get_frontmatter,
+        "get_notes_info": handle_get_notes_info,
+        "list_directory": handle_list_directory,
+    }
