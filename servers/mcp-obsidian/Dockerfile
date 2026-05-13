@@ -34,7 +34,7 @@ COPY src/ /app/src
 
 ENV PYTHONPATH=/app/deps:/app/src
 ENV VAULT_PATH=/vault
-ENV MCP_TRANSPORT=sse
+ENV MCP_TRANSPORT=streamable-http
 ENV MCP_PORT=8080
 ENV LOG_LEVEL=INFO
 

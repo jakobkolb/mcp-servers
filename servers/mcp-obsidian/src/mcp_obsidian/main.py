@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from mcp.server import Server
 
@@ -22,33 +24,35 @@ async def run_stdio(server: Server) -> None:
         await server.run(read_stream, write_stream, server.create_initialization_options())
 
 
-async def run_sse(server: Server, config: Config) -> None:
+async def run_streamable_http(server: Server, config: Config) -> None:
     import uvicorn
-    from mcp.server.sse import SseServerTransport
+    from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
     from starlette.applications import Starlette
     from starlette.requests import Request
-    from starlette.responses import PlainTextResponse
+    from starlette.responses import JSONResponse
     from starlette.routing import Mount, Route
 
-    sse_transport = SseServerTransport("/messages")
+    session_manager = StreamableHTTPSessionManager(
+        app=server,
+        event_store=None,
+        json_response=False,
+        stateless=True,
+    )
 
-    async def handle_sse(request: Request) -> None:
-        async with sse_transport.connect_sse(
-            request.scope,
-            request.receive,
-            request._send,
-        ) as (read_stream, write_stream):
-            await server.run(read_stream, write_stream, server.create_initialization_options())
+    async def health(_: Request) -> JSONResponse:
+        return JSONResponse({"status": "ok"})
 
-    async def health(_: Request) -> PlainTextResponse:
-        return PlainTextResponse("ok")
+    @asynccontextmanager
+    async def lifespan(_: Starlette) -> AsyncIterator[None]:
+        async with session_manager.run():
+            yield
 
     app = Starlette(
         routes=[
             Route("/health", endpoint=health),
-            Route("/sse", endpoint=handle_sse),
-            Mount("/messages", app=sse_transport.handle_post_message),
-        ]
+            Mount("/mcp", app=session_manager.handle_request),
+        ],
+        lifespan=lifespan,
     )
     uvicorn_config = uvicorn.Config(
         app,
@@ -63,11 +67,16 @@ async def amain() -> None:
     config = Config()  # type: ignore[call-arg]
     logging.basicConfig(level=config.log_level.upper())
     server = build_server(config)
+    transport = config.mcp_transport.lower().replace("_", "-")
 
-    if config.mcp_transport.lower() == "stdio":
+    if transport == "stdio":
         await run_stdio(server)
+    elif transport in {"streamable-http", "http", "sse"}:
+        if transport == "sse":
+            logging.warning("MCP_TRANSPORT=sse is deprecated; serving Streamable HTTP on /mcp")
+        await run_streamable_http(server, config)
     else:
-        await run_sse(server, config)
+        raise ValueError(f"Unsupported MCP_TRANSPORT: {config.mcp_transport}")
 
 
 def main() -> None:

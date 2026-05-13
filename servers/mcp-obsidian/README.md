@@ -2,7 +2,7 @@
 
 **Version:** 1.0  
 **Language:** Python 3.12+  
-**Transport:** HTTP/SSE (primary), stdio (secondary)  
+**Transport:** Streamable HTTP (primary), stdio (secondary)  
 **Purpose:** Headless MCP server exposing 19 tools for reading, writing, searching, and task management against a local Obsidian vault. No Obsidian process required — operates directly on the markdown filesystem.
 
 ---
@@ -37,7 +37,7 @@
 ```
 ┌─────────────────────────────────────────────────────┐
 │  MCP Transport Layer                                │
-│  HTTP/SSE on :8080  (primary, k8s)                 │
+│  Streamable HTTP on :8080 /mcp (primary, k8s)      │
 │  stdio              (secondary, Claude Desktop)     │
 └──────────────────────┬──────────────────────────────┘
                        │
@@ -84,10 +84,9 @@ dependencies = [
     # YAML serialization (preserves key order, avoids unwanted quoting)
     "ruamel.yaml>=0.18.0",
 
-    # HTTP server (for SSE transport on k8s)
-    "fastapi>=0.115.0",
+    # HTTP server (for Streamable HTTP transport on k8s)
+    "starlette>=0.46.0",
     "uvicorn[standard]>=0.32.0",
-    "sse-starlette>=2.1.0",
 
     # Utilities
     "pydantic>=2.9.0",           # input validation for tool arguments
@@ -115,9 +114,9 @@ Configuration is read from environment variables, with a fallback YAML config fi
 | Env var | Required | Default | Description |
 |---|---|---|---|
 | `VAULT_PATH` | yes | — | Absolute path to vault root on the PVC |
-| `MCP_TRANSPORT` | no | `sse` | `sse` for HTTP/SSE, `stdio` for stdin/stdout |
-| `MCP_HOST` | no | `0.0.0.0` | Bind host (SSE mode) |
-| `MCP_PORT` | no | `8080` | Bind port (SSE mode) |
+| `MCP_TRANSPORT` | no | `streamable-http` | `streamable-http` for HTTP at `/mcp`, `stdio` for stdin/stdout |
+| `MCP_HOST` | no | `0.0.0.0` | Bind host (Streamable HTTP mode) |
+| `MCP_PORT` | no | `8080` | Bind port (Streamable HTTP mode) |
 | `QMD_URL` | no | — | Base URL of qmd HTTP MCP server (e.g. `http://qmd:8181`). If set, `search_notes` delegates semantic queries here |
 | `LOG_LEVEL` | no | `INFO` | `DEBUG`, `INFO`, `WARNING` |
 | `SEARCH_LIMIT_MAX` | no | `20` | Hard ceiling on `search_notes` results |
@@ -129,7 +128,7 @@ from pydantic import BaseSettings
 
 class Config(BaseSettings):
     vault_path: str
-    mcp_transport: str = "sse"
+    mcp_transport: str = "streamable-http"
     mcp_host: str = "0.0.0.0"
     mcp_port: int = 8080
     qmd_url: str | None = None
@@ -1702,7 +1701,7 @@ obsidian-mcp/
 └── src/
     └── obsidian_mcp/
         ├── __init__.py
-        ├── main.py             ← entry point; starts MCP server (stdio or SSE)
+        ├── main.py             ← entry point; starts MCP server (stdio or Streamable HTTP)
         ├── config.py           ← Config (pydantic BaseSettings)
         ├── errors.py           ← exception hierarchy
         │
@@ -1740,12 +1739,47 @@ obsidian-mcp/
 # src/obsidian_mcp/main.py
 
 import asyncio
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.server.sse import SseServerTransport
+from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 
 from .config import Config
 from .tools.registry import register_all_tools
+
+async def run_streamable_http(server: Server, config: Config):
+    from starlette.applications import Starlette
+    from starlette.responses import JSONResponse
+    from starlette.routing import Mount, Route
+    import uvicorn
+
+    session_manager = StreamableHTTPSessionManager(
+        app=server,
+        event_store=None,
+        json_response=False,
+        stateless=True,
+    )
+
+    async def health(_):
+        return JSONResponse({"status": "ok"})
+
+    @asynccontextmanager
+    async def lifespan(_) -> AsyncIterator[None]:
+        async with session_manager.run():
+            yield
+
+    app = Starlette(
+        routes=[
+            Route("/health", endpoint=health),
+            Mount("/mcp", app=session_manager.handle_request),
+        ],
+        lifespan=lifespan,
+    )
+    await uvicorn.Server(
+        uvicorn.Config(app, host=config.mcp_host, port=config.mcp_port)
+    ).serve()
 
 async def main():
     config = Config()
@@ -1756,31 +1790,7 @@ async def main():
         async with stdio_server() as (read, write):
             await server.run(read, write, server.create_initialization_options())
     else:
-        # HTTP/SSE for k8s
-        from starlette.applications import Starlette
-        from starlette.routing import Route, Mount
-        import uvicorn
-
-        sse = SseServerTransport("/messages")
-
-        async def handle_sse(request):
-            async with sse.connect_sse(
-                request.scope, request.receive, request._send
-            ) as streams:
-                await server.run(
-                    streams[0], streams[1],
-                    server.create_initialization_options()
-                )
-
-        app = Starlette(routes=[
-            Route("/sse", endpoint=handle_sse),
-            Mount("/messages", app=sse.handle_post_message),
-            Route("/health", endpoint=lambda r: Response("ok")),
-        ])
-
-        await uvicorn.Server(
-            uvicorn.Config(app, host=config.mcp_host, port=config.mcp_port)
-        ).serve()
+        await run_streamable_http(server, config)
 
 if __name__ == "__main__":
     asyncio.run(main())
@@ -1808,7 +1818,7 @@ RUN useradd -m -u 1000 mcp
 USER mcp
 
 ENV VAULT_PATH=/vault
-ENV MCP_TRANSPORT=sse
+ENV MCP_TRANSPORT=streamable-http
 ENV MCP_PORT=8080
 
 EXPOSE 8080
@@ -1850,7 +1860,7 @@ spec:
         - name: VAULT_PATH
           value: /vault
         - name: MCP_TRANSPORT
-          value: sse
+          value: streamable-http
         - name: LOG_LEVEL
           value: INFO
         # Optional: qmd sidecar for semantic search
