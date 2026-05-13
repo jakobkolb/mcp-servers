@@ -19,11 +19,7 @@ GROUP_ORDER = {"waiting": 0, "priority": 1, "normal": 2, "notag": 3, "someday": 
 def is_project_note(fm: dict[str, Any]) -> bool:
     tags = extract_tags(fm)
     has_project_tag = any(t.lower() in ("#project", "project") for t in tags)
-    return (
-        has_project_tag
-        and not fm.get("completed", False)
-        and not fm.get("inactive", False)
-    )
+    return has_project_tag and not fm.get("completed", False) and not fm.get("inactive", False)
 
 
 def should_exclude_file(path: str, fm: dict[str, Any]) -> bool:
@@ -38,7 +34,7 @@ def should_exclude_file(path: str, fm: dict[str, Any]) -> bool:
 
 
 def apply_project_sequencing(tasks: list[RawTask]) -> list[RawTask]:
-    """Surface only the first task per section (GTD sequencing). Parallel sections (🟰) bypass this."""
+    """Surface only the first task per section (GTD sequencing). Parallel sections (🟰) bypass."""
     seen_sections: set[str] = set()
     result: list[RawTask] = []
 

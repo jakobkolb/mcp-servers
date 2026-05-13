@@ -29,7 +29,12 @@ def move_note_with_link_rewrite(
     shutil.move(str(src_abs), str(dst_abs))
 
     if old_title == new_title:
-        return {"source": source, "destination": destination, "links_rewritten": 0, "files_scanned": 0}
+        return {
+            "source": source,
+            "destination": destination,
+            "links_rewritten": 0,
+            "files_scanned": 0,
+        }
 
     escaped = re.escape(old_title)
     link_re = re.compile(r"\[\[" + escaped + r"(\|[^\]]+|#[^\]]+(?:\|[^\]]+)?)?\]\]")

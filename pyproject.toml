@@ -48,10 +48,15 @@ disallow_untyped_decorators = false
 disallow_untyped_calls = false
 
 [[tool.mypy.overrides]]
-# mcp's Server tool decorators are untyped at runtime
-module = ["mcp_obsidian.tools.reading"]
+# mcp's Server tool decorators are untyped at runtime — now in registry
+module = ["mcp_obsidian.tools.registry"]
 disallow_untyped_decorators = false
 disallow_untyped_calls = false
+
+[[tool.mypy.overrides]]
+# python-frontmatter ships no py.typed marker
+module = ["frontmatter", "frontmatter.*"]
+ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 # caldav and icalendar use lazy imports / are partially typed; disable strict checks

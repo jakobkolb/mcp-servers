@@ -3,7 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-
 from mcp_obsidian.errors import TaskStateError
 from mcp_obsidian.tasks.mutator import (
     _build_task_line,
@@ -12,7 +11,6 @@ from mcp_obsidian.tasks.mutator import (
     complete_task_in_file,
     set_task_date_in_file,
 )
-
 
 # ---------------------------------------------------------------------------
 # _build_task_line
@@ -86,6 +84,7 @@ def test_complete_task_uses_today_when_no_date(tmp_path: Path):
     result = complete_task_in_file(str(tmp_path), "note.md", 1)
 
     from datetime import date
+
     assert result["done_date"] == date.today().isoformat()
 
 
@@ -207,14 +206,12 @@ def test_add_task_inserts_under_heading(tmp_path: Path):
     note = tmp_path / "note.md"
     note.write_text("## Todo\n- [ ] Existing task\n## Done\n", encoding="utf-8")
 
-    add_task_to_file(
-        str(tmp_path), "note.md", "New task", [], None, None, None, "", False, "Todo"
-    )
+    add_task_to_file(str(tmp_path), "note.md", "New task", [], None, None, None, "", False, "Todo")
 
     lines = note.read_text(encoding="utf-8").splitlines()
     todo_idx = lines.index("## Todo")
     done_idx = lines.index("## Done")
-    task_positions = [i for i, l in enumerate(lines) if "- [ ]" in l or "- [x]" in l]
+    task_positions = [i for i, ln in enumerate(lines) if "- [ ]" in ln or "- [x]" in ln]
     # Both tasks should be between ## Todo and ## Done
     for pos in task_positions:
         assert todo_idx < pos < done_idx

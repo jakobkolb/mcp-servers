@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import re
 from datetime import date
-from pathlib import Path
 from typing import Any
 
 from mcp_obsidian.errors import TaskStateError
@@ -50,9 +49,7 @@ def complete_task_in_file(
 
     original = raw_lines[line - 1].rstrip("\n")
     if "- [ ]" not in original:
-        raise TaskStateError(
-            f"Line {line} does not contain an open task marker. Got: {original!r}"
-        )
+        raise TaskStateError(f"Line {line} does not contain an open task marker. Got: {original!r}")
 
     task_text = original.replace("- [ ]", "", 1).strip()
 
@@ -131,7 +128,9 @@ def add_task_to_file(
     append_under_heading: str | None,
 ) -> dict[str, Any]:
     abs_path = resolve(vault_root, relative)
-    task_line = _build_task_line(text, tags, scheduled_date, due_date, start_date, priority, stamp_created)
+    task_line = _build_task_line(
+        text, tags, scheduled_date, due_date, start_date, priority, stamp_created
+    )
 
     if not abs_path.exists():
         atomic_write(abs_path, (task_line + "\n").encode("utf-8"))

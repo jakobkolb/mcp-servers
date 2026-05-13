@@ -3,10 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-
 from mcp_obsidian.errors import PatchAmbiguousError, PatchNoMatchError, TaskStateError
 from mcp_obsidian.vault.io import atomic_write, patch_line, patch_note
-
 
 # ---------------------------------------------------------------------------
 # atomic_write
@@ -34,7 +32,7 @@ def test_atomic_write_overwrites_existing(tmp_path: Path):
 
 def test_atomic_write_handles_emoji_content(tmp_path: Path):
     target = tmp_path / "note.md"
-    content = "- [ ] Buy milk 🥛 ⏳2026-06-01\n".encode("utf-8")
+    content = "- [ ] Buy milk 🥛 ⏳2026-06-01\n".encode()
     atomic_write(target, content)
     assert target.read_bytes() == content
 
@@ -110,7 +108,7 @@ def test_patch_line_transforms_target_line(tmp_path: Path):
     note = tmp_path / "note.md"
     note.write_text("line one\nline two\nline three\n", encoding="utf-8")
 
-    result = patch_line(str(tmp_path), "note.md", 2, lambda l: l.replace("two", "TWO"))
+    result = patch_line(str(tmp_path), "note.md", 2, lambda ln: ln.replace("two", "TWO"))
 
     assert result == "line TWO"
     lines = note.read_text(encoding="utf-8").splitlines()
@@ -124,13 +122,13 @@ def test_patch_line_raises_out_of_range(tmp_path: Path):
     note.write_text("only one line\n", encoding="utf-8")
 
     with pytest.raises(TaskStateError):
-        patch_line(str(tmp_path), "note.md", 5, lambda l: l)
+        patch_line(str(tmp_path), "note.md", 5, lambda ln: ln)
 
 
 def test_patch_line_first_line(tmp_path: Path):
     note = tmp_path / "note.md"
     note.write_text("- [ ] Task\nOther line\n", encoding="utf-8")
 
-    patch_line(str(tmp_path), "note.md", 1, lambda l: l.replace("[ ]", "[x]"))
+    patch_line(str(tmp_path), "note.md", 1, lambda ln: ln.replace("[ ]", "[x]"))
 
     assert note.read_text(encoding="utf-8").startswith("- [x] Task")

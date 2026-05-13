@@ -2,16 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from mcp_obsidian.tasks.parser import (
-    RawTask,
     collect_tasks_from_file,
     extract_tags,
     is_future_scheduled,
     parse_task_line,
 )
-
 
 # ---------------------------------------------------------------------------
 # parse_task_line
@@ -116,10 +112,7 @@ def test_parse_task_with_german_umlauts_in_tag():
 def test_collect_finds_open_tasks(tmp_path: Path):
     note = tmp_path / "note.md"
     note.write_text(
-        "# Todo\n"
-        "- [ ] First task #context/pc\n"
-        "- [x] Done task\n"
-        "- [ ] Second task\n",
+        "# Todo\n- [ ] First task #context/pc\n- [x] Done task\n- [ ] Second task\n",
         encoding="utf-8",
     )
     tasks = collect_tasks_from_file(str(tmp_path), "note.md", {}, 0.0)
@@ -131,8 +124,7 @@ def test_collect_finds_open_tasks(tmp_path: Path):
 def test_collect_sets_section_from_heading(tmp_path: Path):
     note = tmp_path / "note.md"
     note.write_text(
-        "## My Section\n"
-        "- [ ] Task under heading\n",
+        "## My Section\n- [ ] Task under heading\n",
         encoding="utf-8",
     )
     tasks = collect_tasks_from_file(str(tmp_path), "note.md", {}, 0.0)
@@ -142,10 +134,7 @@ def test_collect_sets_section_from_heading(tmp_path: Path):
 def test_collect_skips_tasks_in_code_blocks(tmp_path: Path):
     note = tmp_path / "note.md"
     note.write_text(
-        "```\n"
-        "- [ ] Not a real task\n"
-        "```\n"
-        "- [ ] Real task\n",
+        "```\n- [ ] Not a real task\n```\n- [ ] Real task\n",
         encoding="utf-8",
     )
     tasks = collect_tasks_from_file(str(tmp_path), "note.md", {}, 0.0)

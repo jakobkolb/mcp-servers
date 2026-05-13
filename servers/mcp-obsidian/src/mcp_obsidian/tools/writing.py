@@ -42,13 +42,17 @@ def get_tools() -> list[Tool]:
     return [
         Tool(
             name="write_note",
-            description="Create, overwrite, append to, or prepend to a note. All writes are atomic.",
+            description="Create or write a note (overwrite/append/prepend). All writes are atomic.",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "path": {"type": "string"},
                     "content": {"type": "string"},
-                    "mode": {"type": "string", "enum": ["overwrite", "append", "prepend"], "default": "overwrite"},
+                    "mode": {
+                        "type": "string",
+                        "enum": ["overwrite", "append", "prepend"],
+                        "default": "overwrite",
+                    },
                     "create_dirs": {"type": "boolean", "default": True},
                 },
                 "required": ["path", "content"],
@@ -57,14 +61,17 @@ def get_tools() -> list[Tool]:
         Tool(
             name="patch_note",
             description=(
-                "Targeted find-and-replace within a note. Works on bytes to handle emoji correctly. "
-                "Raises PATCH_NO_MATCH if old_string not found, PATCH_AMBIGUOUS if it matches multiple times."
+                "Targeted find-and-replace within a note. Works on bytes to handle emoji. "
+                "Raises PATCH_NO_MATCH if not found, PATCH_AMBIGUOUS if multiple matches."
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
                     "path": {"type": "string"},
-                    "old_string": {"type": "string", "description": "Must match exactly (including whitespace)."},
+                    "old_string": {
+                        "type": "string",
+                        "description": "Must match exactly (including whitespace).",
+                    },
                     "new_string": {"type": "string"},
                     "replace_all": {"type": "boolean", "default": False},
                 },
@@ -73,13 +80,17 @@ def get_tools() -> list[Tool]:
         ),
         Tool(
             name="update_frontmatter",
-            description="Merge or replace frontmatter fields on an existing note, preserving body content.",
+            description="Merge or replace frontmatter fields on a note, preserving the body.",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "path": {"type": "string"},
                     "frontmatter": {"type": "object", "description": "Fields to set/update."},
-                    "merge": {"type": "boolean", "default": True, "description": "True: merge with existing. False: replace entirely."},
+                    "merge": {
+                        "type": "boolean",
+                        "default": True,
+                        "description": "True: merge with existing. False: replace entirely.",
+                    },
                 },
                 "required": ["path", "frontmatter"],
             },
@@ -128,7 +139,9 @@ def get_handlers(config: Config) -> dict[str, Callable[..., Any]]:
 
     async def handle_patch_note(arguments: dict[str, Any]) -> dict[str, Any]:
         args = PatchNoteInput(**arguments)
-        return patch_note(config.vault_path, args.path, args.old_string, args.new_string, args.replace_all)
+        return patch_note(
+            config.vault_path, args.path, args.old_string, args.new_string, args.replace_all
+        )
 
     async def handle_update_frontmatter(arguments: dict[str, Any]) -> dict[str, Any]:
         args = UpdateFrontmatterInput(**arguments)

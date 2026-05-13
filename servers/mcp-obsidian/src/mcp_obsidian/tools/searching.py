@@ -20,19 +20,30 @@ def get_tools() -> list[Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "query": {"type": "string", "description": "Search query (regex or literal string)."},
+                    "query": {
+                        "type": "string",
+                        "description": "Search query (regex or literal string).",
+                    },
                     "search_content": {"type": "boolean", "default": True},
                     "search_frontmatter": {"type": "boolean", "default": False},
                     "case_sensitive": {"type": "boolean", "default": False},
-                    "limit": {"type": "integer", "default": 5, "description": "Max results (capped at SEARCH_LIMIT_MAX)."},
-                    "path_filter": {"type": "string", "description": "Restrict to notes under this folder prefix.", "default": None},
+                    "limit": {
+                        "type": "integer",
+                        "default": 5,
+                        "description": "Max results (capped at SEARCH_LIMIT_MAX).",
+                    },
+                    "path_filter": {
+                        "type": "string",
+                        "description": "Restrict to notes under this folder prefix.",
+                        "default": None,
+                    },
                 },
                 "required": ["query"],
             },
         ),
         Tool(
             name="list_all_tags",
-            description="Return all tags in the vault with occurrence counts. Sorted by count descending.",
+            description="Return all vault tags with occurrence counts, sorted by count descending.",
             inputSchema={"type": "object", "properties": {}},
         ),
     ]

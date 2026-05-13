@@ -88,8 +88,7 @@ def patch_note(
 
     if count == 0:
         raise PatchNoMatchError(
-            f"patch_note: old_string not found in {relative!r}. "
-            "Re-read the note and retry."
+            f"patch_note: old_string not found in {relative!r}. Re-read the note and retry."
         )
     if count > 1 and not replace_all:
         raise PatchAmbiguousError(

@@ -65,23 +65,37 @@ def get_tools() -> list[Tool]:
     return [
         Tool(
             name="read_note",
-            description="Read a single markdown note from the vault. Returns frontmatter, body content, raw content, and file metadata.",
+            description="Read a markdown note. Returns frontmatter, body, raw content, metadata.",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "path": {"type": "string", "description": "Vault-relative path to the note (must end in .md)."},
-                    "pretty_print": {"type": "boolean", "description": "Render frontmatter as key/value lines in content.", "default": False},
+                    "path": {
+                        "type": "string",
+                        "description": "Vault-relative path to the note (must end in .md).",
+                    },
+                    "pretty_print": {
+                        "type": "boolean",
+                        "description": "Render frontmatter as key/value lines in content.",
+                        "default": False,
+                    },
                 },
                 "required": ["path"],
             },
         ),
         Tool(
             name="read_multiple_notes",
-            description="Batch read up to MAX_BATCH_READ notes concurrently. Per-note failures are captured in the error field, not raised.",
+            description=(
+                "Batch read up to MAX_BATCH_READ notes concurrently. "
+                "Per-note failures are in the error field, not raised."
+            ),
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "paths": {"type": "array", "items": {"type": "string"}, "description": "Vault-relative paths (max MAX_BATCH_READ)."},
+                    "paths": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Vault-relative paths (max MAX_BATCH_READ).",
+                    },
                     "include_content": {"type": "boolean", "default": True},
                     "include_frontmatter": {"type": "boolean", "default": True},
                 },
@@ -90,7 +104,9 @@ def get_tools() -> list[Tool]:
         ),
         Tool(
             name="get_frontmatter",
-            description="Return only the YAML frontmatter of a note. ~5% the cost of a full read. Use for filter passes.",
+            description=(
+                "Return only the YAML frontmatter (~5% cost of read_note). Use for filter passes."
+            ),
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -101,7 +117,9 @@ def get_tools() -> list[Tool]:
         ),
         Tool(
             name="get_notes_info",
-            description="Return filesystem-level metadata (mtime, ctime, size, is_note) without reading content.",
+            description=(
+                "Return filesystem metadata (mtime, ctime, size, is_note) without reading content."
+            ),
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -112,12 +130,23 @@ def get_tools() -> list[Tool]:
         ),
         Tool(
             name="list_directory",
-            description="List files and subdirectories in a vault folder. Cheaper than search_notes when the folder is known.",
+            description=(
+                "List files and subdirectories in a vault folder. "
+                "Cheaper than search_notes when the path is known."
+            ),
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "path": {"type": "string", "description": "Vault-relative folder path. Empty string = vault root.", "default": ""},
-                    "recursive": {"type": "boolean", "description": "If true, return the full subtree.", "default": False},
+                    "path": {
+                        "type": "string",
+                        "description": "Vault-relative folder path. Empty string = vault root.",
+                        "default": "",
+                    },
+                    "recursive": {
+                        "type": "boolean",
+                        "description": "If true, return the full subtree.",
+                        "default": False,
+                    },
                 },
             },
         ),
@@ -149,7 +178,14 @@ def get_handlers(config: Config) -> dict[str, Callable[..., Any]]:
                     "error": None,
                 }
             except Exception as e:
-                return {"path": path, "frontmatter": None, "content": None, "mtime": None, "size": None, "error": str(e)}
+                return {
+                    "path": path,
+                    "frontmatter": None,
+                    "content": None,
+                    "mtime": None,
+                    "size": None,
+                    "error": str(e),
+                }
 
         notes = list(await asyncio.gather(*[_read_one(p) for p in args.paths]))
         return {"notes": notes, "errors": sum(1 for n in notes if n["error"] is not None)}
@@ -166,7 +202,14 @@ def get_handlers(config: Config) -> dict[str, Callable[..., Any]]:
             try:
                 abs_path = resolve(config.vault_path, path)
                 if not abs_path.exists():
-                    return {"path": path, "exists": False, "mtime": None, "ctime": None, "size": None, "is_note": False}
+                    return {
+                        "path": path,
+                        "exists": False,
+                        "mtime": None,
+                        "ctime": None,
+                        "size": None,
+                        "is_note": False,
+                    }
                 stat = abs_path.stat()
                 return {
                     "path": path,
@@ -177,7 +220,14 @@ def get_handlers(config: Config) -> dict[str, Callable[..., Any]]:
                     "is_note": abs_path.suffix.lower() == ".md",
                 }
             except Exception:
-                return {"path": path, "exists": False, "mtime": None, "ctime": None, "size": None, "is_note": False}
+                return {
+                    "path": path,
+                    "exists": False,
+                    "mtime": None,
+                    "ctime": None,
+                    "size": None,
+                    "is_note": False,
+                }
 
         infos = list(await asyncio.gather(*[asyncio.to_thread(_get_one, p) for p in args.paths]))
         return {"notes": infos}
@@ -201,13 +251,15 @@ def get_handlers(config: Config) -> dict[str, Callable[..., Any]]:
             elif entry.is_file():
                 try:
                     stat = entry.stat()
-                    files.append({
-                        "name": entry.name,
-                        "path": rel,
-                        "is_note": entry.suffix.lower() == ".md",
-                        "size": stat.st_size,
-                        "mtime": datetime.fromtimestamp(stat.st_mtime, tz=UTC).isoformat(),
-                    })
+                    files.append(
+                        {
+                            "name": entry.name,
+                            "path": rel,
+                            "is_note": entry.suffix.lower() == ".md",
+                            "size": stat.st_size,
+                            "mtime": datetime.fromtimestamp(stat.st_mtime, tz=UTC).isoformat(),
+                        }
+                    )
                 except OSError:
                     continue
 

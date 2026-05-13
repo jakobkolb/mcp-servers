@@ -9,7 +9,11 @@ from pydantic import BaseModel
 
 from mcp_obsidian.config import Config
 from mcp_obsidian.tasks.collector import collect_all_tasks
-from mcp_obsidian.tasks.mutator import add_task_to_file, complete_task_in_file, set_task_date_in_file
+from mcp_obsidian.tasks.mutator import (
+    add_task_to_file,
+    complete_task_in_file,
+    set_task_date_in_file,
+)
 
 
 class GetTasksInput(BaseModel):
@@ -59,8 +63,17 @@ def get_tools() -> list[Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "context_tag": {"type": "string", "description": "Filter to tasks with this tag, e.g. '#context/pc'.", "default": None},
-                    "group": {"type": "string", "enum": ["priority", "waiting", "normal", "notag", "someday"], "description": "Filter to a specific group.", "default": None},
+                    "context_tag": {
+                        "type": "string",
+                        "description": "Filter to tasks with this tag, e.g. '#context/pc'.",
+                        "default": None,
+                    },
+                    "group": {
+                        "type": "string",
+                        "enum": ["priority", "waiting", "normal", "notag", "someday"],
+                        "description": "Filter to a specific group.",
+                        "default": None,
+                    },
                     "hide_future_scheduled": {"type": "boolean", "default": True},
                     "include_someday": {"type": "boolean", "default": False},
                     "include_waiting": {"type": "boolean", "default": True},
@@ -71,13 +84,20 @@ def get_tools() -> list[Tool]:
         ),
         Tool(
             name="complete_task",
-            description="Mark an open task as done. Patches - [ ] → - [x] and inserts ✅ YYYY-MM-DD.",
+            description="Mark an open task as done. Patches - [ ] → - [x] and appends ✅ date.",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "path": {"type": "string"},
-                    "line": {"type": "integer", "description": "1-indexed line number from get_tasks result."},
-                    "done_date": {"type": "string", "description": "YYYY-MM-DD; defaults to today.", "default": None},
+                    "line": {
+                        "type": "integer",
+                        "description": "1-indexed line number from get_tasks result.",
+                    },
+                    "done_date": {
+                        "type": "string",
+                        "description": "YYYY-MM-DD; defaults to today.",
+                        "default": None,
+                    },
                 },
                 "required": ["path", "line"],
             },
@@ -90,8 +110,15 @@ def get_tools() -> list[Tool]:
                 "properties": {
                     "path": {"type": "string"},
                     "line": {"type": "integer"},
-                    "date_type": {"type": "string", "enum": ["due", "scheduled", "start", "created"]},
-                    "date": {"type": "string", "description": "YYYY-MM-DD; null removes the field.", "default": None},
+                    "date_type": {
+                        "type": "string",
+                        "enum": ["due", "scheduled", "start", "created"],
+                    },
+                    "date": {
+                        "type": "string",
+                        "description": "YYYY-MM-DD; null removes the field.",
+                        "default": None,
+                    },
                 },
                 "required": ["path", "line", "date_type"],
             },
@@ -103,14 +130,25 @@ def get_tools() -> list[Tool]:
                 "type": "object",
                 "properties": {
                     "path": {"type": "string"},
-                    "text": {"type": "string", "description": "Task description (no emoji needed)."},
+                    "text": {
+                        "type": "string",
+                        "description": "Task description (no emoji needed).",
+                    },
                     "tags": {"type": "array", "items": {"type": "string"}, "default": []},
                     "scheduled_date": {"type": "string", "default": None},
                     "due_date": {"type": "string", "default": None},
                     "start_date": {"type": "string", "default": None},
-                    "priority": {"type": "string", "enum": ["highest", "high", "medium", "low", "lowest", ""], "default": ""},
+                    "priority": {
+                        "type": "string",
+                        "enum": ["highest", "high", "medium", "low", "lowest", ""],
+                        "default": "",
+                    },
                     "stamp_created": {"type": "boolean", "default": True},
-                    "append_under_heading": {"type": "string", "description": "Insert after the last task under this heading.", "default": None},
+                    "append_under_heading": {
+                        "type": "string",
+                        "description": "Insert after the last task under this heading.",
+                        "default": None,
+                    },
                 },
                 "required": ["path", "text"],
             },
@@ -142,7 +180,12 @@ def get_handlers(config: Config) -> dict[str, Callable[..., Any]]:
     async def handle_set_task_date(arguments: dict[str, Any]) -> dict[str, Any]:
         args = SetTaskDateInput(**arguments)
         return await asyncio.to_thread(
-            set_task_date_in_file, config.vault_path, args.path, args.line, args.date_type, args.date
+            set_task_date_in_file,
+            config.vault_path,
+            args.path,
+            args.line,
+            args.date_type,
+            args.date,
         )
 
     async def handle_add_task(arguments: dict[str, Any]) -> dict[str, Any]:

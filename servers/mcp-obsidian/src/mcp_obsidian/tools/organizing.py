@@ -33,7 +33,7 @@ def get_tools() -> list[Tool]:
     return [
         Tool(
             name="move_note",
-            description="Move or rename a .md note, rewriting all [[wiki-links]] that reference it across the vault.",
+            description="Move or rename a .md note, rewriting [[wiki-links]] that reference it.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -46,7 +46,10 @@ def get_tools() -> list[Tool]:
         ),
         Tool(
             name="move_file",
-            description="Move any file without rewriting wiki-links. Binary-safe. Use move_note for .md files unless you explicitly don't want link rewriting.",
+            description=(
+                "Move any file without rewriting wiki-links. Binary-safe. "
+                "Use move_note for .md files unless link rewriting is unwanted."
+            ),
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -64,7 +67,11 @@ def get_tools() -> list[Tool]:
                 "type": "object",
                 "properties": {
                     "path": {"type": "string"},
-                    "confirm": {"type": "boolean", "default": False, "description": "Must be true to actually delete."},
+                    "confirm": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "Must be true to actually delete.",
+                    },
                 },
                 "required": ["path"],
             },
