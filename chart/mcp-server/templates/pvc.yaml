@@ -1,0 +1,16 @@
+{{- range .Values.extraPersistentVolumeClaims }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .name }}
+  labels:
+    {{- include "mcp-server.labels" $ | nindent 4 }}
+spec:
+  storageClassName: {{ .storageClassName }}
+  accessModes:
+    {{- toYaml .accessModes | nindent 4 }}
+  resources:
+    requests:
+      storage: {{ .size }}
+---
+{{- end }}
