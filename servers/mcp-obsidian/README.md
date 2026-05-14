@@ -244,6 +244,7 @@ Input:  context_tag (str, optional)          filter to tasks with this tag, e.g.
         include_waiting (bool, default true)
         project_tasks_only (bool, default false)
         exclude_projects (bool, default false)
+        apply_sequencing (bool, default true)    GTD sequencing on #project notes (first task per section)
 
 Output: tasks (flat list), projects_without_next_action, total_tasks, generated_at
 
@@ -405,10 +406,10 @@ make lint
 ```
 
 Test layout:
-- `tests/unit/` — 104 unit tests (vault I/O, task parser, task mutator, search)
-- `tests/integration/` — 26 integration tests against a live MCP server subprocess
+- `tests/unit/` — 113 unit tests (vault I/O, task parser, task mutator, search, sequencing)
+- `tests/integration/` — 32 integration tests against a live MCP server subprocess
   - `test_read_note_integration.py` — read tool coverage
-  - `test_vault_tools_integration.py` — multi-step workflows (tag rename, complete, defer, search, add)
+  - `test_vault_tools_integration.py` — multi-step workflows (tag rename, complete, defer, search, add, project sequencing)
 
 ---
 

@@ -8,7 +8,7 @@ Each server lives under `servers/<name>/`, ships as a Docker container, and is m
 
 | Server | Type | Description |
 |--------|------|-------------|
-| [mcp-obsidian](servers/mcp-obsidian/) | Tool + Resource | Interact with Obsidian via the Local REST API plugin |
+| [mcp-obsidian](servers/mcp-obsidian/) | Tool | GTD task management and vault CRUD directly on the markdown filesystem — no Obsidian process required |
 | [mcp-calendar](servers/mcp-calendar/) | Tool | Unified CalDAV view of iCloud, Gmail, and Nextcloud calendars |
 
 ## Prerequisites
@@ -54,6 +54,23 @@ make build SERVER=caldav
 4. Update the [Servers](#servers) table above.
 
 The workspace root `pyproject.toml` picks up new servers automatically via the `servers/*` glob — no manual registration needed.
+
+## Releases
+
+Releases are driven by git tags. Pushing a `v*` tag publishes container images for every server and the Helm chart, all at the same version:
+
+```bash
+git tag v0.4.0
+git push origin v0.4.0
+```
+
+This produces:
+- Container images: `ghcr.io/<owner>/<server>:0.4.0`, `:0.4`, `:latest`
+- Helm chart: `oci://ghcr.io/<owner>/charts/mcp-server:0.4.0`
+
+The chart `version` in `Chart.yaml` is a local dev default and does not need to be bumped before tagging — the tag is the source of truth.
+
+On pushes to `main` (without a tag) images are published as `latest` + short SHA only; the chart is not published.
 
 ## Repository structure
 
