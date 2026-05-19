@@ -67,7 +67,14 @@ class CaldavBackend(CalendarBackend):
         filter_name = self._task_filter if self._task_filter is not None else self._calendar_filter
         if filter_name is not None:
             collections = [c for c in collections if c.name == filter_name]
-        return collections
+        vtodo_collections: list[caldav.Calendar] = []
+        for col in collections:
+            try:
+                if "VTODO" in col.get_supported_components():
+                    vtodo_collections.append(col)
+            except Exception:
+                vtodo_collections.append(col)  # include if we can't determine; fail later
+        return vtodo_collections
 
     def _get_calendars(self) -> list[caldav.Calendar]:
         calendars = self._all_calendars()

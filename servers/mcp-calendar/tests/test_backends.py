@@ -24,6 +24,7 @@ def _make_backend(name: str = "test") -> CaldavBackend:
 def _mock_cal(name: str = "Work") -> MagicMock:
     cal = MagicMock()
     cal.name = name
+    cal.get_supported_components.return_value = ["VEVENT", "VTODO"]
     return cal
 
 
@@ -783,6 +784,44 @@ def test_list_tasks_calendar_filter() -> None:
     cal2.todos.assert_called_once()
     assert len(tasks) == 1
     assert tasks[0].summary == "Work task"
+
+
+def test_list_tasks_skips_vevent_only_collections() -> None:
+    """Collections that only support VEVENT must not be queried for tasks."""
+    backend = _make_backend()
+    vevent_cal = _mock_cal("Work")
+    vevent_cal.get_supported_components.return_value = ["VEVENT"]
+
+    vtodo_cal = _mock_cal("Reminders")
+    vtodo_cal.get_supported_components.return_value = ["VTODO"]
+    vtodo_cal.todos.return_value = [_mock_ical_task(uid="t-1", summary="Buy milk")]
+
+    with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
+        MockClient.return_value.principal.return_value.calendars.return_value = [
+            vevent_cal,
+            vtodo_cal,
+        ]
+        tasks = backend.list_tasks()
+
+    vevent_cal.todos.assert_not_called()
+    vtodo_cal.todos.assert_called_once()
+    assert len(tasks) == 1
+    assert tasks[0].summary == "Buy milk"
+
+
+def test_list_tasks_includes_collection_if_supported_components_unavailable() -> None:
+    """If get_supported_components() raises, the collection is included (fail-safe)."""
+    backend = _make_backend()
+    unknown_cal = _mock_cal("Mystery")
+    unknown_cal.get_supported_components.side_effect = Exception("property not found")
+    unknown_cal.todos.return_value = [_mock_ical_task(uid="t-1", summary="Task")]
+
+    with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
+        MockClient.return_value.principal.return_value.calendars.return_value = [unknown_cal]
+        tasks = backend.list_tasks()
+
+    unknown_cal.todos.assert_called_once()
+    assert len(tasks) == 1
 
 
 def test_google_list_tasks_returns_empty() -> None:
