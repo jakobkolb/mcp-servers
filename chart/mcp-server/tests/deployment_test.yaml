@@ -15,6 +15,17 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].image
           value: ghcr.io/jakobkolb/mcp-obsidian:abc1234
+
+  - it: falls back to appVersion when image.tag is empty
+    set:
+      image.repository: ghcr.io/jakobkolb/mcp-obsidian
+      image.tag: ""
+    chart:
+      appVersion: "0.4.0"
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/jakobkolb/mcp-obsidian:0.4.0
       - equal:
           path: spec.template.spec.containers[0].ports[0].containerPort
           value: 8000

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Sequence
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from mcp.types import EmbeddedResource, ImageContent, TextContent, Tool
@@ -322,6 +322,182 @@ class GetFreeBusyToolHandler(ToolHandler):
         return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
 
+class CreateTaskToolHandler(ToolHandler):
+    def __init__(self) -> None:
+        super().__init__("calendar_create_task")
+
+    def get_tool_description(self) -> Tool:
+        return Tool(
+            name=self.name,
+            description="Create a new VTODO task/reminder on a specific backend.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "backend": {
+                        "type": "string",
+                        "description": "Name of the backend to create the task on.",
+                    },
+                    "summary": {
+                        "type": "string",
+                        "description": "Title/summary of the task.",
+                    },
+                    "calendar_name": {
+                        "type": "string",
+                        "description": "Optional task list / calendar name within the backend.",
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Optional task description.",
+                    },
+                    "due": {
+                        "type": "string",
+                        "description": "Optional due date as ISO 8601 date string (YYYY-MM-DD).",
+                    },
+                    "priority": {
+                        "type": "integer",
+                        "description": "Priority 0-9 (0=undefined, 1=highest, 9=lowest).",
+                        "minimum": 0,
+                        "maximum": 9,
+                    },
+                },
+                "required": ["backend", "summary"],
+            },
+        )
+
+    def run_tool(self, args: dict[str, Any]) -> ToolResult:
+        if "backend" not in args:
+            raise RuntimeError("backend argument missing in arguments")
+        if "summary" not in args:
+            raise RuntimeError("summary argument missing in arguments")
+
+        backend_name: str = args["backend"]
+        backend = next((b for b in _backends if b.name == backend_name), None)
+        if backend is None:
+            raise RuntimeError(f"Backend '{backend_name}' not found")
+
+        due: date | None = date.fromisoformat(args["due"]) if "due" in args else None
+
+        task = backend.create_task(
+            summary=args["summary"],
+            calendar_name=args.get("calendar_name"),
+            description=args.get("description"),
+            due=due,
+            priority=args.get("priority", 0),
+        )
+        return [TextContent(type="text", text=json.dumps(task.to_dict(), indent=2))]
+
+
+class UpdateTaskToolHandler(ToolHandler):
+    def __init__(self) -> None:
+        super().__init__("calendar_update_task")
+
+    def get_tool_description(self) -> Tool:
+        return Tool(
+            name=self.name,
+            description="Update an existing VTODO task identified by UID.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "uid": {
+                        "type": "string",
+                        "description": "UID of the task to update.",
+                    },
+                    "backend": {
+                        "type": "string",
+                        "description": "Name of the backend that owns the task.",
+                    },
+                    "summary": {
+                        "type": "string",
+                        "description": "New task title/summary.",
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "New task description.",
+                    },
+                    "due": {
+                        "type": "string",
+                        "description": "New due date as ISO 8601 date string (YYYY-MM-DD).",
+                    },
+                    "priority": {
+                        "type": "integer",
+                        "description": "Priority 0-9 (0=undefined, 1=highest, 9=lowest).",
+                        "minimum": 0,
+                        "maximum": 9,
+                    },
+                    "status": {
+                        "type": "string",
+                        "description": "Task status.",
+                        "enum": ["NEEDS-ACTION", "COMPLETED", "IN-PROCESS", "CANCELLED"],
+                    },
+                },
+                "required": ["uid", "backend"],
+            },
+        )
+
+    def run_tool(self, args: dict[str, Any]) -> ToolResult:
+        if "uid" not in args:
+            raise RuntimeError("uid argument missing in arguments")
+        if "backend" not in args:
+            raise RuntimeError("backend argument missing in arguments")
+
+        backend_name: str = args["backend"]
+        backend = next((b for b in _backends if b.name == backend_name), None)
+        if backend is None:
+            raise RuntimeError(f"Backend '{backend_name}' not found")
+
+        due: date | None = date.fromisoformat(args["due"]) if "due" in args else None
+        priority: int | None = args.get("priority")
+
+        task = backend.update_task(
+            uid=args["uid"],
+            summary=args.get("summary"),
+            description=args.get("description"),
+            due=due,
+            priority=priority,
+            status=args.get("status"),
+        )
+        return [TextContent(type="text", text=json.dumps(task.to_dict(), indent=2))]
+
+
+class DeleteTaskToolHandler(ToolHandler):
+    def __init__(self) -> None:
+        super().__init__("calendar_delete_task")
+
+    def get_tool_description(self) -> Tool:
+        return Tool(
+            name=self.name,
+            description="Delete a VTODO task by UID.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "uid": {
+                        "type": "string",
+                        "description": "UID of the task to delete.",
+                    },
+                    "backend": {
+                        "type": "string",
+                        "description": "Name of the backend that owns the task.",
+                    },
+                },
+                "required": ["uid", "backend"],
+            },
+        )
+
+    def run_tool(self, args: dict[str, Any]) -> ToolResult:
+        if "uid" not in args:
+            raise RuntimeError("uid argument missing in arguments")
+        if "backend" not in args:
+            raise RuntimeError("backend argument missing in arguments")
+
+        backend_name: str = args["backend"]
+        backend = next((b for b in _backends if b.name == backend_name), None)
+        if backend is None:
+            raise RuntimeError(f"Backend '{backend_name}' not found")
+
+        backend.delete_task(args["uid"])
+        return [TextContent(type="text", text=f"Successfully deleted task {args['uid']}")]
+
+
 ALL_HANDLERS: list[ToolHandler] = [
     ListCalendarsToolHandler(),
     ListEventsToolHandler(),
@@ -329,4 +505,7 @@ ALL_HANDLERS: list[ToolHandler] = [
     UpdateEventToolHandler(),
     DeleteEventToolHandler(),
     GetFreeBusyToolHandler(),
+    CreateTaskToolHandler(),
+    UpdateTaskToolHandler(),
+    DeleteTaskToolHandler(),
 ]

@@ -90,7 +90,7 @@ jobs:
       - name: Package and push chart
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          helm package chart/mcp-server --version "$VERSION" --app-version "$GITHUB_REF_NAME"
+          helm package chart/mcp-server --version "$VERSION" --app-version "$VERSION"
           helm push "mcp-server-${VERSION}.tgz" oci://ghcr.io/${{ github.repository_owner }}/charts
 
   build:

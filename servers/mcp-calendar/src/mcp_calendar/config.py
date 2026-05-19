@@ -27,6 +27,7 @@ class NextcloudConfig(BaseModel):
     username: str
     password: str
     calendar_name: str | None = None
+    task_list_filter: str | None = None
     verify_ssl: bool = True
 
 

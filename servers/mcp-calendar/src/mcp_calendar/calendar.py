@@ -3,6 +3,10 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 
 
+class UnsupportedOperationError(Exception):
+    """Raised when a backend does not support the requested operation."""
+
+
 @dataclass
 class CalendarEvent:
     uid: str
@@ -22,6 +26,30 @@ class CalendarEvent:
             "end": self.end.isoformat(),
             "description": self.description,
             "location": self.location,
+            "calendar_name": self.calendar_name,
+            "backend_name": self.backend_name,
+        }
+
+
+@dataclass
+class CalendarTask:
+    uid: str
+    summary: str
+    description: str | None = None
+    due: date | datetime | None = None
+    priority: int = 0
+    status: str = "NEEDS-ACTION"
+    calendar_name: str = ""
+    backend_name: str = ""
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "uid": self.uid,
+            "summary": self.summary,
+            "description": self.description,
+            "due": self.due.isoformat() if self.due is not None else None,
+            "priority": self.priority,
+            "status": self.status,
             "calendar_name": self.calendar_name,
             "backend_name": self.backend_name,
         }
@@ -64,3 +92,27 @@ class CalendarBackend(ABC):
 
     @abstractmethod
     def get_freebusy(self, start: datetime, end: datetime) -> list[tuple[datetime, datetime]]: ...
+
+    @abstractmethod
+    def create_task(
+        self,
+        summary: str,
+        calendar_name: str | None = None,
+        description: str | None = None,
+        due: date | None = None,
+        priority: int = 0,
+    ) -> CalendarTask: ...
+
+    @abstractmethod
+    def update_task(
+        self,
+        uid: str,
+        summary: str | None = None,
+        description: str | None = None,
+        due: date | None = None,
+        priority: int | None = None,
+        status: str | None = None,
+    ) -> CalendarTask: ...
+
+    @abstractmethod
+    def delete_task(self, uid: str) -> None: ...
