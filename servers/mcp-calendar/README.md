@@ -1,8 +1,10 @@
 # mcp-calendar
 
-An MCP server providing a unified view of iCloud, Gmail, and Nextcloud calendars via CalDAV.
+An MCP server providing a unified view of iCloud, Google, and Nextcloud calendars and task lists via CalDAV.
 
 ## Tools
+
+### Events
 
 | Tool | Description |
 |------|-------------|
@@ -12,6 +14,27 @@ An MCP server providing a unified view of iCloud, Gmail, and Nextcloud calendars
 | `calendar_update_event` | Update an existing event by UID |
 | `calendar_delete_event` | Delete an event by UID |
 | `calendar_get_freebusy` | Get busy time slots within a date/time range |
+
+### Tasks (VTODO)
+
+| Tool | Description |
+|------|-------------|
+| `calendar_list_tasks` | List tasks/reminders across all backends (optional backend and calendar filter) |
+| `calendar_create_task` | Create a new task on a specific backend |
+| `calendar_update_task` | Update an existing task by UID (summary, due date, priority, status) |
+| `calendar_delete_task` | Delete a task by UID |
+
+> **Note:** Google Calendar does not support task write operations (`create_task`, `update_task`, `delete_task`). `list_tasks` returns an empty list for Google backends.
+
+### Reminders / alarms
+
+`calendar_create_event` and `calendar_update_event` both accept an optional `alarms` field — a list of integers representing minutes before the event start when a reminder should fire:
+
+```json
+{ "alarms": [15, 60] }
+```
+
+Omitting `alarms` in `calendar_update_event` preserves existing reminders. Passing an empty list removes them all.
 
 ## Configuration
 
@@ -37,7 +60,8 @@ calendars:
     url: https://cloud.example.com
     username: alice
     password: "<your-password>"
-    calendar_name: Family           # optional: filter to a single calendar
+    calendar_name: Family           # optional: filter events to a single calendar
+    task_list_filter: My Tasks      # optional: filter tasks to a specific task list
     verify_ssl: true                # optional, default true
 ```
 
