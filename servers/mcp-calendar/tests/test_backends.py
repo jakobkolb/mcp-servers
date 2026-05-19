@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -31,6 +31,7 @@ def _mock_ical_event(
     summary: str = "Meeting",
     start: datetime | date = datetime(2024, 6, 1, 10, 0, tzinfo=UTC),
     end: datetime | date = datetime(2024, 6, 1, 11, 0, tzinfo=UTC),
+    alarm_offsets_minutes: list[int] | None = None,
 ) -> MagicMock:
     comp = MagicMock()
     comp.get = lambda key, default=None: {  # type: ignore[misc]
@@ -41,6 +42,20 @@ def _mock_ical_event(
         "description": None,
         "location": None,
     }.get(key, default)
+
+    alarm_mocks: list[MagicMock] = []
+    for minutes in alarm_offsets_minutes or []:
+        alarm_comp = MagicMock()
+        alarm_comp.name = "VALARM"
+        trigger_mock = MagicMock()
+        trigger_mock.dt = timedelta(minutes=-minutes)
+        alarm_comp.get = lambda key, default=None, _t=trigger_mock: {  # type: ignore[misc]
+            "TRIGGER": _t,
+        }.get(key, default)
+        alarm_mocks.append(alarm_comp)
+
+    comp.walk.return_value = [comp] + alarm_mocks
+
     event = MagicMock()
     event.icalendar_component = comp
     return event
@@ -727,3 +742,177 @@ def test_google_list_tasks_returns_empty() -> None:
         result = backend.list_tasks()
 
     assert result == []
+
+
+# ---------------------------------------------------------------------------
+# CalendarEvent alarms field
+# ---------------------------------------------------------------------------
+
+
+def test_calendar_event_alarms_in_to_dict() -> None:
+    event = CalendarEvent(
+        uid="uid-1",
+        summary="Meeting",
+        start=datetime(2024, 6, 5, 10, 0, tzinfo=UTC),
+        end=datetime(2024, 6, 5, 11, 0, tzinfo=UTC),
+        alarms=[timedelta(minutes=15), timedelta(minutes=30)],
+    )
+    d = event.to_dict()
+    assert d["alarms"] == [15, 30]
+
+
+def test_calendar_event_default_alarms_empty() -> None:
+    event = CalendarEvent(
+        uid="uid-1",
+        summary="Meeting",
+        start=datetime(2024, 6, 5, 10, 0, tzinfo=UTC),
+        end=datetime(2024, 6, 5, 11, 0, tzinfo=UTC),
+    )
+    assert event.to_dict()["alarms"] == []
+
+
+# ---------------------------------------------------------------------------
+# VALARM parsing
+# ---------------------------------------------------------------------------
+
+
+def test_parse_event_reads_valarm() -> None:
+    backend = _make_backend()
+    raw = _mock_ical_event(alarm_offsets_minutes=[15])
+    event = backend._parse_event(raw, "Work")
+    assert len(event.alarms) == 1
+    assert event.alarms[0] == timedelta(minutes=15)
+
+
+def test_parse_event_multiple_valarms() -> None:
+    backend = _make_backend()
+    raw = _mock_ical_event(alarm_offsets_minutes=[5, 15, 30])
+    event = backend._parse_event(raw, "Work")
+    assert sorted(a.total_seconds() for a in event.alarms) == [
+        timedelta(minutes=5).total_seconds(),
+        timedelta(minutes=15).total_seconds(),
+        timedelta(minutes=30).total_seconds(),
+    ]
+
+
+def test_parse_event_no_valarm_gives_empty_alarms() -> None:
+    backend = _make_backend()
+    raw = _mock_ical_event()
+    event = backend._parse_event(raw, "Work")
+    assert event.alarms == []
+
+
+# ---------------------------------------------------------------------------
+# VALARM writing (_build_ical)
+# ---------------------------------------------------------------------------
+
+
+def test_build_ical_with_alarms() -> None:
+    backend = _make_backend()
+    start = datetime(2024, 7, 1, 9, 0, tzinfo=UTC)
+    end = datetime(2024, 7, 1, 10, 0, tzinfo=UTC)
+    ical = backend._build_ical("uid-1", "Test", start, end, None, None, [timedelta(minutes=15)])
+    assert b"VALARM" in ical
+    assert b"TRIGGER" in ical
+
+
+def test_build_ical_without_alarms_has_no_valarm() -> None:
+    backend = _make_backend()
+    start = datetime(2024, 7, 1, 9, 0, tzinfo=UTC)
+    end = datetime(2024, 7, 1, 10, 0, tzinfo=UTC)
+    ical = backend._build_ical("uid-1", "Test", start, end, None, None)
+    assert b"VALARM" not in ical
+
+
+# ---------------------------------------------------------------------------
+# create_event with alarms
+# ---------------------------------------------------------------------------
+
+
+def test_create_event_with_alarms() -> None:
+    backend = _make_backend()
+    cal = _mock_cal("Work")
+    start = datetime(2024, 7, 1, 9, 0, tzinfo=UTC)
+    end = datetime(2024, 7, 1, 10, 0, tzinfo=UTC)
+
+    with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
+        MockClient.return_value.principal.return_value.calendars.return_value = [cal]
+        event = backend.create_event(
+            summary="Meeting",
+            start=start,
+            end=end,
+            alarms=[timedelta(minutes=15)],
+        )
+
+    raw: bytes = cal.save_event.call_args[0][0]
+    assert b"VALARM" in raw
+    assert event.alarms == [timedelta(minutes=15)]
+
+
+def test_create_event_without_alarms_no_valarm() -> None:
+    backend = _make_backend()
+    cal = _mock_cal("Work")
+    start = datetime(2024, 7, 1, 9, 0, tzinfo=UTC)
+    end = datetime(2024, 7, 1, 10, 0, tzinfo=UTC)
+
+    with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
+        MockClient.return_value.principal.return_value.calendars.return_value = [cal]
+        event = backend.create_event(summary="Meeting", start=start, end=end)
+
+    raw: bytes = cal.save_event.call_args[0][0]
+    assert b"VALARM" not in raw
+    assert event.alarms == []
+
+
+# ---------------------------------------------------------------------------
+# update_event alarms
+# ---------------------------------------------------------------------------
+
+
+def test_update_event_preserves_existing_alarms() -> None:
+    """Calling update_event without alarms arg must keep the original VALARM."""
+    backend = _make_backend()
+    cal = _mock_cal("Work")
+    uid = "uid-with-alarm"
+    raw = _mock_ical_event(uid=uid, alarm_offsets_minutes=[15])
+    cal.event_by_uid.return_value = raw
+
+    with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
+        MockClient.return_value.principal.return_value.calendars.return_value = [cal]
+        updated = backend.update_event(uid=uid, summary="New title")
+
+    assert isinstance(raw.data, str)
+    assert "VALARM" in raw.data
+    assert updated.alarms == [timedelta(minutes=15)]
+
+
+def test_update_event_replaces_alarms() -> None:
+    """Passing alarms to update_event must replace existing VALARMs."""
+    backend = _make_backend()
+    cal = _mock_cal("Work")
+    uid = "uid-with-alarm"
+    raw = _mock_ical_event(uid=uid, alarm_offsets_minutes=[15])
+    cal.event_by_uid.return_value = raw
+
+    with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
+        MockClient.return_value.principal.return_value.calendars.return_value = [cal]
+        updated = backend.update_event(uid=uid, alarms=[timedelta(minutes=5)])
+
+    assert "VALARM" in raw.data
+    assert updated.alarms == [timedelta(minutes=5)]
+
+
+def test_update_event_clears_alarms_with_empty_list() -> None:
+    """Passing alarms=[] to update_event must remove all VALARMs."""
+    backend = _make_backend()
+    cal = _mock_cal("Work")
+    uid = "uid-with-alarm"
+    raw = _mock_ical_event(uid=uid, alarm_offsets_minutes=[15])
+    cal.event_by_uid.return_value = raw
+
+    with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
+        MockClient.return_value.principal.return_value.calendars.return_value = [cal]
+        updated = backend.update_event(uid=uid, alarms=[])
+
+    assert "VALARM" not in raw.data
+    assert updated.alarms == []

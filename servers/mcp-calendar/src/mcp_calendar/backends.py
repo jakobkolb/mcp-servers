@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 import caldav
 import icalendar
@@ -90,6 +90,13 @@ class CaldavBackend(CalendarBackend):
         start_dt: datetime | date = dtstart.dt if dtstart is not None else datetime.now(tz=UTC)
         end_dt: datetime | date = dtend.dt if dtend is not None else datetime.now(tz=UTC)
 
+        alarms: list[timedelta] = []
+        for sub in comp.walk():
+            if sub.name == "VALARM":
+                trigger = sub.get("TRIGGER")
+                if trigger is not None and isinstance(trigger.dt, timedelta):
+                    alarms.append(abs(trigger.dt))
+
         return CalendarEvent(
             uid=uid,
             summary=summary,
@@ -99,6 +106,7 @@ class CaldavBackend(CalendarBackend):
             location=location,
             calendar_name=cal_name,
             backend_name=self.name,
+            alarms=alarms,
         )
 
     def _build_ical(
@@ -109,6 +117,7 @@ class CaldavBackend(CalendarBackend):
         end: datetime,
         description: str | None,
         location: str | None,
+        alarms: list[timedelta] | None = None,
     ) -> bytes:
         cal = icalendar.Calendar()
         cal.add("prodid", "-//mcp-calendar//EN")
@@ -123,6 +132,12 @@ class CaldavBackend(CalendarBackend):
             event.add("description", description)
         if location is not None:
             event.add("location", location)
+        for offset in alarms or []:
+            alarm = icalendar.Alarm()
+            alarm.add("ACTION", "DISPLAY")
+            alarm.add("DESCRIPTION", "Reminder")
+            alarm.add("TRIGGER", -offset)
+            event.add_component(alarm)
 
         cal.add_component(event)
         return cal.to_ical()
@@ -201,6 +216,7 @@ class CaldavBackend(CalendarBackend):
         calendar_name: str | None = None,
         description: str | None = None,
         location: str | None = None,
+        alarms: list[timedelta] | None = None,
     ) -> CalendarEvent:
         calendars = self._get_calendars()
         if calendar_name is not None:
@@ -213,7 +229,7 @@ class CaldavBackend(CalendarBackend):
             target = calendars[0]
 
         uid = str(uuid.uuid4())
-        ical_bytes = self._build_ical(uid, summary, start, end, description, location)
+        ical_bytes = self._build_ical(uid, summary, start, end, description, location, alarms)
         target.save_event(ical_bytes)
 
         return CalendarEvent(
@@ -225,6 +241,7 @@ class CaldavBackend(CalendarBackend):
             location=location,
             calendar_name=target.name or "",
             backend_name=self.name,
+            alarms=alarms or [],
         )
 
     def update_event(
@@ -235,6 +252,7 @@ class CaldavBackend(CalendarBackend):
         end: datetime | None = None,
         description: str | None = None,
         location: str | None = None,
+        alarms: list[timedelta] | None = None,
     ) -> CalendarEvent:
         for cal in self._get_calendars():
             try:
@@ -284,8 +302,18 @@ class CaldavBackend(CalendarBackend):
                 else (str(existing_loc) if existing_loc is not None else None)
             )
 
+            if alarms is None:
+                new_alarms: list[timedelta] = []
+                for sub in comp.walk():
+                    if sub.name == "VALARM":
+                        trigger = sub.get("TRIGGER")
+                        if trigger is not None and isinstance(trigger.dt, timedelta):
+                            new_alarms.append(abs(trigger.dt))
+            else:
+                new_alarms = alarms
+
             ical_bytes = self._build_ical(
-                uid, new_summary, new_start, new_end, new_description, new_location
+                uid, new_summary, new_start, new_end, new_description, new_location, new_alarms
             )
             event.data = ical_bytes.decode("utf-8")
             event.save()
@@ -300,6 +328,7 @@ class CaldavBackend(CalendarBackend):
                 location=new_location,
                 calendar_name=cal_name,
                 backend_name=self.name,
+                alarms=new_alarms,
             )
 
         raise ValueError(f"Event with uid '{uid}' not found in any calendar")
