@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 from collections.abc import AsyncIterator, Sequence
@@ -54,7 +55,7 @@ async def call_tool(
     if not handler:
         raise ValueError(f"Unknown tool: {name}")
     try:
-        return handler.run_tool(arguments)
+        return await asyncio.to_thread(handler.run_tool, arguments)
     except Exception as e:
         logger.error(str(e))
         raise RuntimeError(f"Error: {str(e)}") from e
