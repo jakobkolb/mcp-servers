@@ -7,7 +7,7 @@ from datetime import UTC, date, datetime
 import caldav
 import icalendar
 
-from .calendar import CalendarBackend, CalendarEvent
+from .calendar import CalendarBackend, CalendarEvent, CalendarTask, UnsupportedOperationError
 from .config import GoogleConfig, ICloudConfig, NextcloudConfig
 
 logger = logging.getLogger(__name__)
@@ -30,6 +30,7 @@ class CaldavBackend(CalendarBackend):
         password: str,
         verify_ssl: bool = True,
         calendar_filter: str | None = None,
+        task_filter: str | None = None,
     ) -> None:
         self.name = name
         self._url = url
@@ -37,6 +38,7 @@ class CaldavBackend(CalendarBackend):
         self._password = password
         self._verify_ssl = verify_ssl
         self._calendar_filter = calendar_filter
+        self._task_filter = task_filter
 
     def _client(self) -> caldav.DAVClient:
         return caldav.DAVClient(
@@ -45,6 +47,14 @@ class CaldavBackend(CalendarBackend):
             password=self._password,
             ssl_verify_cert=self._verify_ssl,
         )
+
+    def _get_task_collections(self) -> list[caldav.Calendar]:
+        client = self._client()
+        collections: list[caldav.Calendar] = client.principal().calendars()
+        filter_name = self._task_filter if self._task_filter is not None else self._calendar_filter
+        if filter_name is not None:
+            collections = [c for c in collections if c.name == filter_name]
+        return collections
 
     def _get_calendars(self) -> list[caldav.Calendar]:
         client = self._client()
@@ -104,6 +114,54 @@ class CaldavBackend(CalendarBackend):
 
         cal.add_component(event)
         return cal.to_ical()
+
+    def _build_vtodo(
+        self,
+        uid: str,
+        summary: str,
+        description: str | None,
+        due: date | None,
+        priority: int,
+    ) -> bytes:
+        cal = icalendar.Calendar()
+        cal.add("prodid", "-//mcp-calendar//EN")
+        cal.add("version", "2.0")
+
+        todo = icalendar.Todo()
+        todo.add("uid", uid)
+        todo.add("summary", summary)
+        todo.add("priority", priority)
+        todo.add("status", "NEEDS-ACTION")
+        if description is not None:
+            todo.add("description", description)
+        if due is not None:
+            todo.add("due", due)
+
+        cal.add_component(todo)
+        return cal.to_ical()
+
+    def _parse_task(self, caldav_obj: caldav.CalendarObjectResource, cal_name: str) -> CalendarTask:
+        comp = caldav_obj.icalendar_component
+        uid = str(comp.get("uid", ""))
+        summary = str(comp.get("summary", ""))
+        desc_prop = comp.get("description")
+        description = str(desc_prop) if desc_prop is not None else None
+        due_prop = comp.get("due")
+        due: date | datetime | None = due_prop.dt if due_prop is not None else None
+        priority_prop = comp.get("priority")
+        priority = int(priority_prop) if priority_prop is not None else 0
+        status_prop = comp.get("status")
+        status = str(status_prop) if status_prop is not None else "NEEDS-ACTION"
+        return CalendarTask(
+            uid=uid,
+            summary=summary,
+            description=description,
+            due=due,
+            priority=priority,
+            status=status,
+            calendar_name=cal_name,
+            backend_name=self.name,
+        )
 
     def list_calendars(self) -> list[str]:
         return [c.name for c in self._get_calendars()]
@@ -244,6 +302,107 @@ class CaldavBackend(CalendarBackend):
                 continue
         raise ValueError(f"Event with uid '{uid}' not found in any calendar")
 
+    def create_task(
+        self,
+        summary: str,
+        calendar_name: str | None = None,
+        description: str | None = None,
+        due: date | None = None,
+        priority: int = 0,
+    ) -> CalendarTask:
+        collections = self._get_task_collections()
+        if calendar_name is not None:
+            target = next((c for c in collections if c.name == calendar_name), None)
+            if target is None:
+                raise ValueError(f"Calendar '{calendar_name}' not found")
+        else:
+            if not collections:
+                raise ValueError("No task collections available")
+            target = collections[0]
+
+        uid = str(uuid.uuid4())
+        ical_bytes = self._build_vtodo(uid, summary, description, due, priority)
+        target.save_event(ical_bytes)
+
+        return CalendarTask(
+            uid=uid,
+            summary=summary,
+            description=description,
+            due=due,
+            priority=priority,
+            status="NEEDS-ACTION",
+            calendar_name=target.name or "",
+            backend_name=self.name,
+        )
+
+    def update_task(
+        self,
+        uid: str,
+        summary: str | None = None,
+        description: str | None = None,
+        due: date | None = None,
+        priority: int | None = None,
+        status: str | None = None,
+    ) -> CalendarTask:
+        for col in self._get_task_collections():
+            try:
+                task_obj = col.event_by_uid(uid)
+            except Exception:
+                continue
+
+            # Parse and patch in-place to preserve any custom properties
+            raw_cal = icalendar.Calendar.from_ical(task_obj.data)
+            vtodo = next(c for c in raw_cal.walk() if c.name == "VTODO")
+
+            if summary is not None:
+                del vtodo["SUMMARY"]
+                vtodo.add("SUMMARY", summary)
+            if description is not None:
+                if "DESCRIPTION" in vtodo:
+                    del vtodo["DESCRIPTION"]
+                vtodo.add("DESCRIPTION", description)
+            if due is not None:
+                if "DUE" in vtodo:
+                    del vtodo["DUE"]
+                vtodo.add("DUE", due)
+            if priority is not None:
+                if "PRIORITY" in vtodo:
+                    del vtodo["PRIORITY"]
+                vtodo.add("PRIORITY", priority)
+            if status is not None:
+                if "STATUS" in vtodo:
+                    del vtodo["STATUS"]
+                vtodo.add("STATUS", status)
+
+            task_obj.data = raw_cal.to_ical().decode("utf-8")
+            task_obj.save()
+
+            final_summary = summary if summary is not None else str(vtodo.get("SUMMARY", ""))
+            existing_status = str(vtodo.get("STATUS", "NEEDS-ACTION"))
+            final_status = status if status is not None else existing_status
+            return CalendarTask(
+                uid=uid,
+                summary=final_summary,
+                description=description,
+                due=due,
+                priority=priority if priority is not None else 0,
+                status=final_status,
+                calendar_name=getattr(col, "name", "") or "",
+                backend_name=self.name,
+            )
+
+        raise ValueError(f"Task with uid '{uid}' not found in any collection")
+
+    def delete_task(self, uid: str) -> None:
+        for col in self._get_task_collections():
+            try:
+                task_obj = col.event_by_uid(uid)
+                task_obj.delete()
+                return
+            except Exception:
+                continue
+        raise ValueError(f"Task with uid '{uid}' not found in any collection")
+
     def get_freebusy(self, start: datetime, end: datetime) -> list[tuple[datetime, datetime]]:
         events = self.list_events(start, end)
         result: list[tuple[datetime, datetime]] = []
@@ -278,6 +437,15 @@ class GoogleBackend(CaldavBackend):
             password=cfg.password,
         )
 
+    def create_task(self, summary: str, **kwargs: object) -> CalendarTask:  # type: ignore[override]
+        raise UnsupportedOperationError("Google CalDAV does not support VTODO write operations")
+
+    def update_task(self, uid: str, **kwargs: object) -> CalendarTask:  # type: ignore[override]
+        raise UnsupportedOperationError("Google CalDAV does not support VTODO write operations")
+
+    def delete_task(self, uid: str) -> None:
+        raise UnsupportedOperationError("Google CalDAV does not support VTODO write operations")
+
 
 class NextcloudBackend(CaldavBackend):
     def __init__(self, cfg: NextcloudConfig) -> None:
@@ -289,4 +457,5 @@ class NextcloudBackend(CaldavBackend):
             password=cfg.password,
             verify_ssl=cfg.verify_ssl,
             calendar_filter=cfg.calendar_name,
+            task_filter=cfg.task_list_filter,
         )

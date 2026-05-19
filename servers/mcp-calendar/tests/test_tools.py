@@ -2,20 +2,23 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from unittest.mock import MagicMock
 
 import pytest
 from mcp_calendar import tools
-from mcp_calendar.calendar import CalendarEvent
+from mcp_calendar.calendar import CalendarEvent, CalendarTask
 from mcp_calendar.tools import (
     ALL_HANDLERS,
     CreateEventToolHandler,
+    CreateTaskToolHandler,
     DeleteEventToolHandler,
+    DeleteTaskToolHandler,
     GetFreeBusyToolHandler,
     ListCalendarsToolHandler,
     ListEventsToolHandler,
     UpdateEventToolHandler,
+    UpdateTaskToolHandler,
 )
 
 
@@ -42,6 +45,22 @@ def _make_mock_backend(name: str = "mybackend") -> MagicMock:
     backend = MagicMock()
     backend.name = name
     return backend
+
+
+def _make_task(
+    uid: str = "task-1",
+    summary: str = "Buy milk",
+    backend_name: str = "mybackend",
+) -> CalendarTask:
+    return CalendarTask(
+        uid=uid,
+        summary=summary,
+        due=date(2024, 7, 1),
+        priority=0,
+        status="NEEDS-ACTION",
+        calendar_name="Tasks",
+        backend_name=backend_name,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -250,12 +269,137 @@ def test_get_freebusy_backend_filter(mocker: pytest.MonkeyPatch) -> None:
 
 
 # ---------------------------------------------------------------------------
+# calendar_create_task
+# ---------------------------------------------------------------------------
+
+
+def test_create_task_missing_backend() -> None:
+    with pytest.raises(RuntimeError, match="backend"):
+        CreateTaskToolHandler().run_tool({"summary": "Do something"})
+
+
+def test_create_task_missing_summary() -> None:
+    with pytest.raises(RuntimeError, match="summary"):
+        CreateTaskToolHandler().run_tool({"backend": "mybackend"})
+
+
+def test_create_task(mocker: pytest.MonkeyPatch) -> None:
+    b = _make_mock_backend("icloud")
+    created = _make_task(uid="new-task", summary="Write tests")
+    b.create_task.return_value = created
+    mocker.patch.object(tools, "_backends", [b])
+
+    result = CreateTaskToolHandler().run_tool({"backend": "icloud", "summary": "Write tests"})
+    b.create_task.assert_called_once()
+    text = _text(result)
+    assert "Write tests" in text
+    assert "new-task" in text
+
+
+def test_create_task_with_optional_fields(mocker: pytest.MonkeyPatch) -> None:
+    b = _make_mock_backend("icloud")
+    created = _make_task(uid="t-2", summary="Important")
+    b.create_task.return_value = created
+    mocker.patch.object(tools, "_backends", [b])
+
+    CreateTaskToolHandler().run_tool(
+        {
+            "backend": "icloud",
+            "summary": "Important",
+            "description": "Details here",
+            "due": "2024-08-01",
+            "priority": 1,
+            "calendar_name": "Work Tasks",
+        }
+    )
+    b.create_task.assert_called_once_with(
+        summary="Important",
+        calendar_name="Work Tasks",
+        description="Details here",
+        due=date(2024, 8, 1),
+        priority=1,
+    )
+
+
+# ---------------------------------------------------------------------------
+# calendar_update_task
+# ---------------------------------------------------------------------------
+
+
+def test_update_task_missing_uid() -> None:
+    with pytest.raises(RuntimeError, match="uid"):
+        UpdateTaskToolHandler().run_tool({"backend": "mybackend"})
+
+
+def test_update_task_missing_backend() -> None:
+    with pytest.raises(RuntimeError, match="backend"):
+        UpdateTaskToolHandler().run_tool({"uid": "task-1"})
+
+
+def test_update_task(mocker: pytest.MonkeyPatch) -> None:
+    b = _make_mock_backend("icloud")
+    updated = _make_task(uid="task-1", summary="Updated title")
+    b.update_task.return_value = updated
+    mocker.patch.object(tools, "_backends", [b])
+
+    result = UpdateTaskToolHandler().run_tool(
+        {"uid": "task-1", "backend": "icloud", "summary": "Updated title"}
+    )
+    b.update_task.assert_called_once_with(
+        uid="task-1",
+        summary="Updated title",
+        description=None,
+        due=None,
+        priority=None,
+        status=None,
+    )
+    assert "Updated title" in _text(result)
+
+
+def test_update_task_with_status(mocker: pytest.MonkeyPatch) -> None:
+    b = _make_mock_backend("icloud")
+    done = _make_task(uid="task-1", summary="Done task")
+    b.update_task.return_value = done
+    mocker.patch.object(tools, "_backends", [b])
+
+    UpdateTaskToolHandler().run_tool(
+        {"uid": "task-1", "backend": "icloud", "status": "COMPLETED"}
+    )
+    call_kwargs = b.update_task.call_args[1]
+    assert call_kwargs["status"] == "COMPLETED"
+
+
+# ---------------------------------------------------------------------------
+# calendar_delete_task
+# ---------------------------------------------------------------------------
+
+
+def test_delete_task_missing_uid() -> None:
+    with pytest.raises(RuntimeError, match="uid"):
+        DeleteTaskToolHandler().run_tool({"backend": "mybackend"})
+
+
+def test_delete_task_missing_backend() -> None:
+    with pytest.raises(RuntimeError, match="backend"):
+        DeleteTaskToolHandler().run_tool({"uid": "task-1"})
+
+
+def test_delete_task(mocker: pytest.MonkeyPatch) -> None:
+    b = _make_mock_backend("icloud")
+    mocker.patch.object(tools, "_backends", [b])
+
+    result = DeleteTaskToolHandler().run_tool({"uid": "task-1", "backend": "icloud"})
+    b.delete_task.assert_called_once_with("task-1")
+    assert "task-1" in _text(result)
+
+
+# ---------------------------------------------------------------------------
 # Structural checks
 # ---------------------------------------------------------------------------
 
 
 def test_all_handlers_registered() -> None:
-    assert len(ALL_HANDLERS) == 6
+    assert len(ALL_HANDLERS) == 9
 
 
 def test_all_handlers_have_descriptions() -> None:

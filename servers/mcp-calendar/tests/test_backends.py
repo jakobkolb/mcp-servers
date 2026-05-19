@@ -5,8 +5,9 @@ from __future__ import annotations
 from datetime import UTC, date, datetime
 from unittest.mock import MagicMock, patch
 
+import pytest
 from mcp_calendar.backends import CaldavBackend, GoogleBackend, ICloudBackend, NextcloudBackend
-from mcp_calendar.calendar import CalendarEvent
+from mcp_calendar.calendar import CalendarEvent, CalendarTask, UnsupportedOperationError
 from mcp_calendar.config import GoogleConfig, ICloudConfig, NextcloudConfig
 
 
@@ -254,3 +255,332 @@ def test_nextcloud_url() -> None:
     cfg = NextcloudConfig(name="nc", url="https://cloud.example.com", username="u", password="p")
     backend = NextcloudBackend(cfg)
     assert backend._url.endswith("/remote.php/dav/")
+
+
+# ---------------------------------------------------------------------------
+# Helpers for VTODO tests
+# ---------------------------------------------------------------------------
+
+_VTODO_TEMPLATE = (
+    "BEGIN:VCALENDAR\r\n"
+    "VERSION:2.0\r\n"
+    "PRODID:-//mcp-calendar//EN\r\n"
+    "BEGIN:VTODO\r\n"
+    "UID:{uid}\r\n"
+    "SUMMARY:{summary}\r\n"
+    "STATUS:NEEDS-ACTION\r\n"
+    "PRIORITY:0\r\n"
+    "END:VTODO\r\n"
+    "END:VCALENDAR\r\n"
+)
+
+
+def _mock_ical_task(
+    uid: str = "task-1",
+    summary: str = "Buy milk",
+    due: date | None = None,
+    priority: int = 0,
+    status: str = "NEEDS-ACTION",
+    description: str | None = None,
+) -> MagicMock:
+    comp = MagicMock()
+    comp.get = lambda key, default=None: {  # type: ignore[misc]
+        "uid": uid,
+        "summary": summary,
+        "due": MagicMock(dt=due) if due else None,
+        "priority": priority,
+        "status": status,
+        "description": description,
+    }.get(key, default)
+    task = MagicMock()
+    task.icalendar_component = comp
+    task.data = _VTODO_TEMPLATE.format(uid=uid, summary=summary)
+    return task
+
+
+# ---------------------------------------------------------------------------
+# CalendarTask dataclass
+# ---------------------------------------------------------------------------
+
+
+def test_calendar_task_to_dict() -> None:
+    task = CalendarTask(
+        uid="t-1",
+        summary="Buy milk",
+        description="Whole milk",
+        due=date(2024, 7, 1),
+        priority=5,
+        status="NEEDS-ACTION",
+        calendar_name="Tasks",
+        backend_name="icloud",
+    )
+    d = task.to_dict()
+    assert d["uid"] == "t-1"
+    assert d["summary"] == "Buy milk"
+    assert d["description"] == "Whole milk"
+    assert d["due"] == "2024-07-01"
+    assert d["priority"] == 5
+    assert d["status"] == "NEEDS-ACTION"
+    assert d["calendar_name"] == "Tasks"
+    assert d["backend_name"] == "icloud"
+
+
+def test_calendar_task_to_dict_no_due() -> None:
+    task = CalendarTask(uid="t-2", summary="Reminder")
+    assert task.to_dict()["due"] is None
+
+
+# ---------------------------------------------------------------------------
+# create_task
+# ---------------------------------------------------------------------------
+
+
+def test_create_task() -> None:
+    backend = _make_backend()
+    cal = _mock_cal("Tasks")
+
+    with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
+        MockClient.return_value.principal.return_value.calendars.return_value = [cal]
+        task = backend.create_task(summary="Write tests")
+
+    cal.save_event.assert_called_once()
+    raw: bytes = cal.save_event.call_args[0][0]
+    assert b"VTODO" in raw
+    assert b"Write tests" in raw
+
+    assert isinstance(task, CalendarTask)
+    assert task.summary == "Write tests"
+    assert task.backend_name == "test"
+    assert task.calendar_name == "Tasks"
+
+
+def test_create_task_with_optional_fields() -> None:
+    backend = _make_backend()
+    cal = _mock_cal("Tasks")
+    due = date(2024, 8, 1)
+
+    with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
+        MockClient.return_value.principal.return_value.calendars.return_value = [cal]
+        task = backend.create_task(
+            summary="Important task",
+            description="Must not forget",
+            due=due,
+            priority=1,
+        )
+
+    raw: bytes = cal.save_event.call_args[0][0]
+    assert b"Important task" in raw
+    assert b"Must not forget" in raw
+    assert b"20240801" in raw
+    assert b"PRIORITY:1" in raw
+
+    assert task.description == "Must not forget"
+    assert task.due == due
+    assert task.priority == 1
+
+
+def test_create_task_target_calendar() -> None:
+    backend = _make_backend()
+    cal1 = _mock_cal("Personal")
+    cal2 = _mock_cal("Work Tasks")
+
+    with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
+        MockClient.return_value.principal.return_value.calendars.return_value = [cal1, cal2]
+        backend.create_task(summary="Work item", calendar_name="Work Tasks")
+
+    cal1.save_event.assert_not_called()
+    cal2.save_event.assert_called_once()
+
+
+def test_create_task_calendar_not_found() -> None:
+    backend = _make_backend()
+    cal = _mock_cal("Tasks")
+
+    with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
+        MockClient.return_value.principal.return_value.calendars.return_value = [cal]
+        with pytest.raises(ValueError, match="not found"):
+            backend.create_task(summary="X", calendar_name="Nonexistent")
+
+
+# ---------------------------------------------------------------------------
+# update_task
+# ---------------------------------------------------------------------------
+
+
+def test_update_task_summary() -> None:
+    backend = _make_backend()
+    cal = _mock_cal("Tasks")
+    uid = "task-to-update"
+    raw_task = _mock_ical_task(uid=uid, summary="Old summary")
+    cal.event_by_uid.return_value = raw_task
+
+    with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
+        MockClient.return_value.principal.return_value.calendars.return_value = [cal]
+        updated = backend.update_task(uid=uid, summary="New summary")
+
+    assert raw_task.save.called
+    assert updated.summary == "New summary"
+    assert updated.uid == uid
+
+
+def test_update_task_status() -> None:
+    backend = _make_backend()
+    cal = _mock_cal("Tasks")
+    uid = "task-status"
+    raw_task = _mock_ical_task(uid=uid, summary="Do something")
+    cal.event_by_uid.return_value = raw_task
+
+    with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
+        MockClient.return_value.principal.return_value.calendars.return_value = [cal]
+        updated = backend.update_task(uid=uid, status="COMPLETED")
+
+    assert raw_task.save.called
+    assert updated.status == "COMPLETED"
+
+
+def test_update_task_not_found() -> None:
+    backend = _make_backend()
+    cal = _mock_cal("Tasks")
+    cal.event_by_uid.side_effect = Exception("not found")
+
+    with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
+        MockClient.return_value.principal.return_value.calendars.return_value = [cal]
+        with pytest.raises(ValueError, match="not found"):
+            backend.update_task(uid="ghost-uid", summary="X")
+
+
+def test_update_task_patches_in_place() -> None:
+    """update_task must modify the existing iCal data, not rebuild from scratch."""
+    backend = _make_backend()
+    cal = _mock_cal("Tasks")
+    uid = "task-inplace"
+    # Include a custom property that would be lost if rebuilt from scratch
+    custom_vtodo = (
+        "BEGIN:VCALENDAR\r\n"
+        "VERSION:2.0\r\n"
+        "BEGIN:VTODO\r\n"
+        f"UID:{uid}\r\n"
+        "SUMMARY:Original\r\n"
+        "STATUS:NEEDS-ACTION\r\n"
+        "PRIORITY:0\r\n"
+        "X-CUSTOM-PROP:keep-me\r\n"
+        "END:VTODO\r\n"
+        "END:VCALENDAR\r\n"
+    )
+    raw_task = MagicMock()
+    raw_task.data = custom_vtodo
+    raw_task.icalendar_component = _mock_ical_task(uid=uid, summary="Original").icalendar_component
+    cal.event_by_uid.return_value = raw_task
+
+    with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
+        MockClient.return_value.principal.return_value.calendars.return_value = [cal]
+        backend.update_task(uid=uid, summary="Updated")
+
+    # The saved data should still contain the custom property
+    assert raw_task.save.called
+    saved_data: str = raw_task.data
+    assert "X-CUSTOM-PROP" in saved_data
+    assert "Updated" in saved_data
+
+
+# ---------------------------------------------------------------------------
+# delete_task
+# ---------------------------------------------------------------------------
+
+
+def test_delete_task() -> None:
+    backend = _make_backend()
+    cal = _mock_cal("Tasks")
+    uid = "task-to-delete"
+    raw_task = _mock_ical_task(uid=uid)
+    cal.event_by_uid.return_value = raw_task
+
+    with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
+        MockClient.return_value.principal.return_value.calendars.return_value = [cal]
+        backend.delete_task(uid)
+
+    raw_task.delete.assert_called_once()
+
+
+def test_delete_task_not_found() -> None:
+    backend = _make_backend()
+    cal = _mock_cal("Tasks")
+    cal.event_by_uid.side_effect = Exception("not found")
+
+    with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
+        MockClient.return_value.principal.return_value.calendars.return_value = [cal]
+        with pytest.raises(ValueError, match="not found"):
+            backend.delete_task("ghost-uid")
+
+
+# ---------------------------------------------------------------------------
+# GoogleBackend raises UnsupportedOperationError for task writes
+# ---------------------------------------------------------------------------
+
+
+def test_google_create_task_raises_unsupported() -> None:
+    cfg = GoogleConfig(name="goog", username="user@gmail.com", password="p")
+    backend = GoogleBackend(cfg)
+
+    with patch("mcp_calendar.backends.caldav.DAVClient"):
+        with pytest.raises(UnsupportedOperationError):
+            backend.create_task(summary="Nope")
+
+
+def test_google_update_task_raises_unsupported() -> None:
+    cfg = GoogleConfig(name="goog", username="user@gmail.com", password="p")
+    backend = GoogleBackend(cfg)
+
+    with patch("mcp_calendar.backends.caldav.DAVClient"):
+        with pytest.raises(UnsupportedOperationError):
+            backend.update_task(uid="some-uid", summary="Nope")
+
+
+def test_google_delete_task_raises_unsupported() -> None:
+    cfg = GoogleConfig(name="goog", username="user@gmail.com", password="p")
+    backend = GoogleBackend(cfg)
+
+    with patch("mcp_calendar.backends.caldav.DAVClient"):
+        with pytest.raises(UnsupportedOperationError):
+            backend.delete_task("some-uid")
+
+
+# ---------------------------------------------------------------------------
+# NextcloudConfig task_list_filter
+# ---------------------------------------------------------------------------
+
+
+def test_nextcloud_task_list_filter_config() -> None:
+    cfg = NextcloudConfig(
+        name="nc",
+        url="https://cloud.example.com",
+        username="u",
+        password="p",
+        task_list_filter="My Tasks",
+    )
+    backend = NextcloudBackend(cfg)
+    assert backend._task_filter == "My Tasks"
+
+
+def test_nextcloud_task_list_filter_used_for_create_task() -> None:
+    cfg = NextcloudConfig(
+        name="nc",
+        url="https://cloud.example.com",
+        username="u",
+        password="p",
+        task_list_filter="My Tasks",
+    )
+    backend = NextcloudBackend(cfg)
+
+    tasks_cal = _mock_cal("My Tasks")
+    other_cal = _mock_cal("Calendar")
+
+    with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
+        MockClient.return_value.principal.return_value.calendars.return_value = [
+            tasks_cal,
+            other_cal,
+        ]
+        backend.create_task(summary="Nextcloud task")
+
+    tasks_cal.save_event.assert_called_once()
+    other_cal.save_event.assert_not_called()
