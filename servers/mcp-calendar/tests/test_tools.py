@@ -362,9 +362,7 @@ def test_update_task_with_status(mocker: pytest.MonkeyPatch) -> None:
     b.update_task.return_value = done
     mocker.patch.object(tools, "_backends", [b])
 
-    UpdateTaskToolHandler().run_tool(
-        {"uid": "task-1", "backend": "icloud", "status": "COMPLETED"}
-    )
+    UpdateTaskToolHandler().run_tool({"uid": "task-1", "backend": "icloud", "status": "COMPLETED"})
     call_kwargs = b.update_task.call_args[1]
     assert call_kwargs["status"] == "COMPLETED"
 
