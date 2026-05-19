@@ -562,6 +562,78 @@ def test_nextcloud_task_list_filter_config() -> None:
     assert backend._task_filter == "My Tasks"
 
 
+# ---------------------------------------------------------------------------
+# Connection / calendar-list caching
+# ---------------------------------------------------------------------------
+
+
+def test_client_is_cached_across_calls() -> None:
+    """DAVClient must be instantiated only once even when two methods are called."""
+    backend = _make_backend()
+    start = datetime(2024, 6, 1, tzinfo=UTC)
+    end = datetime(2024, 6, 30, tzinfo=UTC)
+
+    with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
+        MockClient.return_value.principal.return_value.calendars.return_value = []
+        backend.list_calendars()
+        backend.list_events(start, end)
+
+    MockClient.assert_called_once()
+
+
+def test_calendars_are_cached_across_calls() -> None:
+    """principal().calendars() must be called only once across multiple methods."""
+    backend = _make_backend()
+    start = datetime(2024, 6, 1, tzinfo=UTC)
+    end = datetime(2024, 6, 30, tzinfo=UTC)
+
+    with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
+        MockClient.return_value.principal.return_value.calendars.return_value = []
+        backend.list_calendars()
+        backend.list_events(start, end)
+
+    MockClient.return_value.principal.return_value.calendars.assert_called_once()
+
+
+def test_cache_invalidated_on_connection_error() -> None:
+    """On a connection failure the cache is cleared so the next call reconnects."""
+    backend = _make_backend()
+    start = datetime(2024, 6, 1, tzinfo=UTC)
+    end = datetime(2024, 6, 30, tzinfo=UTC)
+
+    good_cal = _mock_cal("Work")
+    good_cal.date_search.return_value = [_mock_ical_event()]
+
+    with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
+        # First call: principal().calendars() raises a connection error
+        MockClient.return_value.principal.return_value.calendars.side_effect = Exception(
+            "connection refused"
+        )
+        with pytest.raises(Exception, match="connection refused"):
+            backend.list_events(start, end)
+
+        # Second call: connection succeeds again
+        MockClient.return_value.principal.return_value.calendars.side_effect = None
+        MockClient.return_value.principal.return_value.calendars.return_value = [good_cal]
+        events = backend.list_events(start, end)
+
+    # Cache was invalidated — a fresh DAVClient was created for the retry
+    assert MockClient.call_count == 2
+    assert len(events) == 1
+
+
+def test_task_collections_share_calendar_cache() -> None:
+    """list_tasks and list_calendars must share the same cached calendar list."""
+    backend = _make_backend()
+
+    with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
+        MockClient.return_value.principal.return_value.calendars.return_value = []
+        backend.list_calendars()
+        backend.list_tasks()
+
+    MockClient.return_value.principal.return_value.calendars.assert_called_once()
+
+
 def test_nextcloud_task_list_filter_used_for_create_task() -> None:
     cfg = NextcloudConfig(
         name="nc",

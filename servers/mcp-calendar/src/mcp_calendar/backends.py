@@ -39,26 +39,38 @@ class CaldavBackend(CalendarBackend):
         self._verify_ssl = verify_ssl
         self._calendar_filter = calendar_filter
         self._task_filter = task_filter
+        self._cached_client: caldav.DAVClient | None = None
+        self._cached_all_calendars: list[caldav.Calendar] | None = None
 
     def _client(self) -> caldav.DAVClient:
-        return caldav.DAVClient(
-            url=self._url,
-            username=self._username,
-            password=self._password,
-            ssl_verify_cert=self._verify_ssl,
-        )
+        if self._cached_client is None:
+            self._cached_client = caldav.DAVClient(
+                url=self._url,
+                username=self._username,
+                password=self._password,
+                ssl_verify_cert=self._verify_ssl,
+            )
+        return self._cached_client
+
+    def _all_calendars(self) -> list[caldav.Calendar]:
+        if self._cached_all_calendars is None:
+            try:
+                self._cached_all_calendars = self._client().principal().calendars()
+            except Exception:
+                self._cached_client = None
+                self._cached_all_calendars = None
+                raise
+        return self._cached_all_calendars
 
     def _get_task_collections(self) -> list[caldav.Calendar]:
-        client = self._client()
-        collections: list[caldav.Calendar] = client.principal().calendars()
+        collections = self._all_calendars()
         filter_name = self._task_filter if self._task_filter is not None else self._calendar_filter
         if filter_name is not None:
             collections = [c for c in collections if c.name == filter_name]
         return collections
 
     def _get_calendars(self) -> list[caldav.Calendar]:
-        client = self._client()
-        calendars: list[caldav.Calendar] = client.principal().calendars()
+        calendars = self._all_calendars()
         if self._calendar_filter is not None:
             calendars = [c for c in calendars if c.name == self._calendar_filter]
         return calendars
