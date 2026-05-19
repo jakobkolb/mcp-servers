@@ -260,63 +260,54 @@ class CaldavBackend(CalendarBackend):
             except Exception:
                 continue
 
-            comp = event.icalendar_component
-            new_summary = summary if summary is not None else str(comp.get("summary", ""))
-            dtstart = comp.get("dtstart")
-            dtend = comp.get("dtend")
-            new_start: datetime
-            new_end: datetime
+            # Patch in-place to preserve custom properties (RRULE, ATTENDEE, etc.)
+            raw_cal = icalendar.Calendar.from_ical(event.data)
+            vevent = next(c for c in raw_cal.walk() if c.name == "VEVENT")
 
-            existing_start = dtstart.dt if dtstart is not None else datetime.now(tz=UTC)
-            existing_end = dtend.dt if dtend is not None else datetime.now(tz=UTC)
+            if summary is not None:
+                del vevent["SUMMARY"]
+                vevent.add("SUMMARY", summary)
+            if start is not None:
+                del vevent["DTSTART"]
+                vevent.add("DTSTART", start)
+            if end is not None:
+                del vevent["DTEND"]
+                vevent.add("DTEND", end)
+            if description is not None:
+                if "DESCRIPTION" in vevent:
+                    del vevent["DESCRIPTION"]
+                vevent.add("DESCRIPTION", description)
+            if location is not None:
+                if "LOCATION" in vevent:
+                    del vevent["LOCATION"]
+                vevent.add("LOCATION", location)
+            if alarms is not None:
+                vevent.subcomponents = [c for c in vevent.subcomponents if c.name != "VALARM"]
+                for offset in alarms:
+                    alarm = icalendar.Alarm()
+                    alarm.add("ACTION", "DISPLAY")
+                    alarm.add("DESCRIPTION", "Reminder")
+                    alarm.add("TRIGGER", -offset)
+                    vevent.add_component(alarm)
 
-            # Convert bare date to datetime for the iCal builder
-            if not isinstance(existing_start, datetime):
-                existing_start = datetime(
-                    existing_start.year,
-                    existing_start.month,
-                    existing_start.day,
-                    tzinfo=UTC,
-                )
-            if not isinstance(existing_end, datetime):
-                existing_end = datetime(
-                    existing_end.year,
-                    existing_end.month,
-                    existing_end.day,
-                    tzinfo=UTC,
-                )
-
-            new_start = start if start is not None else existing_start
-            new_end = end if end is not None else existing_end
-
-            existing_desc = comp.get("description")
-            new_description = (
-                description
-                if description is not None
-                else (str(existing_desc) if existing_desc is not None else None)
-            )
-            existing_loc = comp.get("location")
-            new_location = (
-                location
-                if location is not None
-                else (str(existing_loc) if existing_loc is not None else None)
-            )
-
-            if alarms is None:
-                new_alarms: list[timedelta] = []
-                for sub in comp.walk():
-                    if sub.name == "VALARM":
-                        trigger = sub.get("TRIGGER")
-                        if trigger is not None and isinstance(trigger.dt, timedelta):
-                            new_alarms.append(abs(trigger.dt))
-            else:
-                new_alarms = alarms
-
-            ical_bytes = self._build_ical(
-                uid, new_summary, new_start, new_end, new_description, new_location, new_alarms
-            )
-            event.data = ical_bytes.decode("utf-8")
+            event.data = raw_cal.to_ical().decode("utf-8")
             event.save()
+
+            new_summary = str(vevent.get("SUMMARY", ""))
+            dtstart = vevent.get("DTSTART")
+            dtend = vevent.get("DTEND")
+            new_start: datetime | date = dtstart.dt if dtstart is not None else datetime.now(tz=UTC)
+            new_end: datetime | date = dtend.dt if dtend is not None else datetime.now(tz=UTC)
+            desc_prop = vevent.get("DESCRIPTION")
+            new_description = str(desc_prop) if desc_prop is not None else None
+            loc_prop = vevent.get("LOCATION")
+            new_location = str(loc_prop) if loc_prop is not None else None
+            new_alarms: list[timedelta] = []
+            for sub in vevent.subcomponents:
+                if sub.name == "VALARM":
+                    trigger = sub.get("TRIGGER")
+                    if trigger is not None and isinstance(trigger.dt, timedelta):
+                        new_alarms.append(abs(trigger.dt))
 
             cal_name: str = getattr(cal, "name", "") or ""
             return CalendarEvent(

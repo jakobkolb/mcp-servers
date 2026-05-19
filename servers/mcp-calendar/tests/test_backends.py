@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import UTC, date, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
+import icalendar
 import pytest
 from mcp_calendar.backends import CaldavBackend, GoogleBackend, ICloudBackend, NextcloudBackend
 from mcp_calendar.calendar import CalendarEvent, CalendarTask, UnsupportedOperationError
@@ -33,6 +34,25 @@ def _mock_ical_event(
     end: datetime | date = datetime(2024, 6, 1, 11, 0, tzinfo=UTC),
     alarm_offsets_minutes: list[int] | None = None,
 ) -> MagicMock:
+    # Build a real iCal string so update_event's in-place patching can parse event.data
+    cal_obj = icalendar.Calendar()
+    cal_obj.add("prodid", "-//mcp-calendar//EN")
+    cal_obj.add("version", "2.0")
+    event_comp_real = icalendar.Event()
+    event_comp_real.add("uid", uid)
+    event_comp_real.add("summary", summary)
+    event_comp_real.add("dtstart", start)
+    event_comp_real.add("dtend", end)
+    for minutes in alarm_offsets_minutes or []:
+        alarm = icalendar.Alarm()
+        alarm.add("ACTION", "DISPLAY")
+        alarm.add("DESCRIPTION", "Reminder")
+        alarm.add("TRIGGER", timedelta(minutes=-minutes))
+        event_comp_real.add_component(alarm)
+    cal_obj.add_component(event_comp_real)
+    ical_str = cal_obj.to_ical().decode("utf-8")
+
+    # Keep the mock component for _parse_event (reads via icalendar_component)
     comp = MagicMock()
     comp.get = lambda key, default=None: {  # type: ignore[misc]
         "uid": uid,
@@ -58,6 +78,7 @@ def _mock_ical_event(
 
     event = MagicMock()
     event.icalendar_component = comp
+    event.data = ical_str
     return event
 
 
@@ -916,3 +937,41 @@ def test_update_event_clears_alarms_with_empty_list() -> None:
 
     assert "VALARM" not in raw.data
     assert updated.alarms == []
+
+
+def test_update_event_patches_in_place() -> None:
+    """update_event must modify existing iCal data, not rebuild from scratch."""
+    backend = _make_backend()
+    cal = _mock_cal("Work")
+    uid = "event-inplace"
+    start = datetime(2024, 6, 1, 10, 0, tzinfo=UTC)
+    end = datetime(2024, 6, 1, 11, 0, tzinfo=UTC)
+    custom_vevent = (
+        "BEGIN:VCALENDAR\r\n"
+        "VERSION:2.0\r\n"
+        "BEGIN:VEVENT\r\n"
+        f"UID:{uid}\r\n"
+        "SUMMARY:Original\r\n"
+        "DTSTART:20240601T100000Z\r\n"
+        "DTEND:20240601T110000Z\r\n"
+        "RRULE:FREQ=WEEKLY;COUNT=5\r\n"
+        "X-CUSTOM-PROP:keep-me\r\n"
+        "END:VEVENT\r\n"
+        "END:VCALENDAR\r\n"
+    )
+    raw = MagicMock()
+    raw.data = custom_vevent
+    raw.icalendar_component = _mock_ical_event(
+        uid=uid, summary="Original", start=start, end=end
+    ).icalendar_component
+    cal.event_by_uid.return_value = raw
+
+    with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
+        MockClient.return_value.principal.return_value.calendars.return_value = [cal]
+        backend.update_event(uid=uid, summary="New title")
+
+    assert raw.save.called
+    saved_data: str = raw.data
+    assert "RRULE" in saved_data
+    assert "X-CUSTOM-PROP" in saved_data
+    assert "New title" in saved_data
