@@ -17,6 +17,7 @@ from mcp_calendar.tools import (
     GetFreeBusyToolHandler,
     ListCalendarsToolHandler,
     ListEventsToolHandler,
+    ListTasksToolHandler,
     UpdateEventToolHandler,
     UpdateTaskToolHandler,
 )
@@ -392,12 +393,50 @@ def test_delete_task(mocker: pytest.MonkeyPatch) -> None:
 
 
 # ---------------------------------------------------------------------------
+# calendar_list_tasks
+# ---------------------------------------------------------------------------
+
+
+def test_list_tasks(mocker: pytest.MonkeyPatch) -> None:
+    b = _make_mock_backend("icloud")
+    b.list_tasks.return_value = [_make_task(uid="t-1", summary="Buy milk")]
+    mocker.patch.object(tools, "_backends", [b])
+
+    result = ListTasksToolHandler().run_tool({})
+    text = _text(result)
+    assert "Buy milk" in text
+    assert "t-1" in text
+
+
+def test_list_tasks_backend_filter(mocker: pytest.MonkeyPatch) -> None:
+    b1 = _make_mock_backend("icloud")
+    b1.list_tasks.return_value = [_make_task(backend_name="icloud")]
+    b2 = _make_mock_backend("google")
+    b2.list_tasks.return_value = []
+    mocker.patch.object(tools, "_backends", [b1, b2])
+
+    result = ListTasksToolHandler().run_tool({"backend": "icloud"})
+    b1.list_tasks.assert_called_once()
+    b2.list_tasks.assert_not_called()
+    assert "icloud" in _text(result)
+
+
+def test_list_tasks_calendar_name_filter(mocker: pytest.MonkeyPatch) -> None:
+    b = _make_mock_backend("icloud")
+    b.list_tasks.return_value = []
+    mocker.patch.object(tools, "_backends", [b])
+
+    ListTasksToolHandler().run_tool({"calendar_name": "Work Tasks"})
+    b.list_tasks.assert_called_once_with(calendar_name="Work Tasks")
+
+
+# ---------------------------------------------------------------------------
 # Structural checks
 # ---------------------------------------------------------------------------
 
 
 def test_all_handlers_registered() -> None:
-    assert len(ALL_HANDLERS) == 9
+    assert len(ALL_HANDLERS) == 10
 
 
 def test_all_handlers_have_descriptions() -> None:

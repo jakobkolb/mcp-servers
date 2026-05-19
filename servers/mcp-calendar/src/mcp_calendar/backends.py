@@ -403,6 +403,23 @@ class CaldavBackend(CalendarBackend):
                 continue
         raise ValueError(f"Task with uid '{uid}' not found in any collection")
 
+    def list_tasks(self, calendar_name: str | None = None) -> list[CalendarTask]:
+        tasks: list[CalendarTask] = []
+        collections = self._get_task_collections()
+        if calendar_name is not None:
+            collections = [c for c in collections if c.name == calendar_name]
+        for col in collections:
+            try:
+                col_name: str = col.name or ""
+                for obj in col.todos():
+                    try:
+                        tasks.append(self._parse_task(obj, col_name))
+                    except Exception:
+                        logger.exception("Failed to parse task in collection %s", col_name)
+            except Exception:
+                logger.exception("Failed to list tasks in collection %s", getattr(col, "name", "?"))
+        return tasks
+
     def get_freebusy(self, start: datetime, end: datetime) -> list[tuple[datetime, datetime]]:
         events = self.list_events(start, end)
         result: list[tuple[datetime, datetime]] = []
@@ -436,6 +453,9 @@ class GoogleBackend(CaldavBackend):
             username=cfg.username,
             password=cfg.password,
         )
+
+    def list_tasks(self, calendar_name: str | None = None) -> list[CalendarTask]:
+        return []
 
     def create_task(self, summary: str, **kwargs: object) -> CalendarTask:  # type: ignore[override]
         raise UnsupportedOperationError("Google CalDAV does not support VTODO write operations")

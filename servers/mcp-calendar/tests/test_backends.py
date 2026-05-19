@@ -584,3 +584,74 @@ def test_nextcloud_task_list_filter_used_for_create_task() -> None:
 
     tasks_cal.save_event.assert_called_once()
     other_cal.save_event.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# list_tasks
+# ---------------------------------------------------------------------------
+
+
+def test_list_tasks() -> None:
+    backend = _make_backend()
+    cal = _mock_cal("Tasks")
+    raw_task = _mock_ical_task(uid="t-1", summary="Buy milk", due=date(2024, 7, 1))
+    cal.todos.return_value = [raw_task]
+
+    with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
+        MockClient.return_value.principal.return_value.calendars.return_value = [cal]
+        tasks = backend.list_tasks()
+
+    assert len(tasks) == 1
+    assert isinstance(tasks[0], CalendarTask)
+    assert tasks[0].uid == "t-1"
+    assert tasks[0].summary == "Buy milk"
+    assert tasks[0].due == date(2024, 7, 1)
+    assert tasks[0].calendar_name == "Tasks"
+    assert tasks[0].backend_name == "test"
+
+
+def test_list_tasks_handles_error() -> None:
+    """Collection that raises should not prevent results from other collections."""
+    backend = _make_backend()
+    bad_cal = _mock_cal("Bad")
+    bad_cal.todos.side_effect = RuntimeError("connection failed")
+
+    good_cal = _mock_cal("Good")
+    good_task = _mock_ical_task(uid="t-ok", summary="OK")
+    good_cal.todos.return_value = [good_task]
+
+    with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
+        MockClient.return_value.principal.return_value.calendars.return_value = [bad_cal, good_cal]
+        tasks = backend.list_tasks()
+
+    assert len(tasks) == 1
+    assert tasks[0].summary == "OK"
+
+
+def test_list_tasks_calendar_filter() -> None:
+    """calendar_name param restricts which collection is queried."""
+    backend = _make_backend()
+    cal1 = _mock_cal("Personal")
+    cal1.todos.return_value = [_mock_ical_task(uid="t-personal", summary="Personal task")]
+    cal2 = _mock_cal("Work Tasks")
+    cal2.todos.return_value = [_mock_ical_task(uid="t-work", summary="Work task")]
+
+    with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
+        MockClient.return_value.principal.return_value.calendars.return_value = [cal1, cal2]
+        tasks = backend.list_tasks(calendar_name="Work Tasks")
+
+    cal1.todos.assert_not_called()
+    cal2.todos.assert_called_once()
+    assert len(tasks) == 1
+    assert tasks[0].summary == "Work task"
+
+
+def test_google_list_tasks_returns_empty() -> None:
+    """Google backend must return [] for list_tasks, not raise."""
+    cfg = GoogleConfig(name="goog", username="user@gmail.com", password="p")
+    backend = GoogleBackend(cfg)
+
+    with patch("mcp_calendar.backends.caldav.DAVClient"):
+        result = backend.list_tasks()
+
+    assert result == []
