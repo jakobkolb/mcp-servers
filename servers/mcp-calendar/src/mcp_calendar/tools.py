@@ -367,7 +367,11 @@ class CreateTaskToolHandler(ToolHandler):
                     },
                     "due": {
                         "type": "string",
-                        "description": "Optional due date as ISO 8601 date string (YYYY-MM-DD).",
+                        "description": (
+                            "Optional due date or datetime as ISO 8601 string. "
+                            "Use YYYY-MM-DD for a date-only due, or a full datetime "
+                            "(e.g. 2024-06-01T09:00:00+02:00) to specify a time of day."
+                        ),
                     },
                     "priority": {
                         "type": "integer",
@@ -391,7 +395,10 @@ class CreateTaskToolHandler(ToolHandler):
         if backend is None:
             raise RuntimeError(f"Backend '{backend_name}' not found")
 
-        due: date | None = date.fromisoformat(args["due"]) if "due" in args else None
+        due: date | datetime | None = None
+        if "due" in args:
+            due_str: str = args["due"]
+            due = datetime.fromisoformat(due_str) if "T" in due_str else date.fromisoformat(due_str)
 
         task = backend.create_task(
             summary=args["summary"],
@@ -432,7 +439,11 @@ class UpdateTaskToolHandler(ToolHandler):
                     },
                     "due": {
                         "type": "string",
-                        "description": "New due date as ISO 8601 date string (YYYY-MM-DD).",
+                        "description": (
+                            "New due date or datetime as ISO 8601 string. "
+                            "Use YYYY-MM-DD for a date-only due, or a full datetime "
+                            "(e.g. 2024-06-01T09:00:00+02:00) to specify a time of day."
+                        ),
                     },
                     "priority": {
                         "type": "integer",
@@ -461,7 +472,10 @@ class UpdateTaskToolHandler(ToolHandler):
         if backend is None:
             raise RuntimeError(f"Backend '{backend_name}' not found")
 
-        due: date | None = date.fromisoformat(args["due"]) if "due" in args else None
+        due: date | datetime | None = None
+        if "due" in args:
+            due_str = args["due"]
+            due = datetime.fromisoformat(due_str) if "T" in due_str else date.fromisoformat(due_str)
         priority: int | None = args.get("priority")
 
         task = backend.update_task(

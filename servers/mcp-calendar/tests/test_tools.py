@@ -324,6 +324,19 @@ def test_create_task_with_optional_fields(mocker: pytest.MonkeyPatch) -> None:
     )
 
 
+def test_create_task_with_datetime_due(mocker: pytest.MonkeyPatch) -> None:
+    b = _make_mock_backend("icloud")
+    b.create_task.return_value = _make_task()
+    mocker.patch.object(tools, "_backends", [b])
+
+    CreateTaskToolHandler().run_tool(
+        {"backend": "icloud", "summary": "Standup", "due": "2024-08-01T09:00:00+00:00"}
+    )
+    call_kwargs = b.create_task.call_args[1]
+    assert isinstance(call_kwargs["due"], datetime)
+    assert call_kwargs["due"] == datetime(2024, 8, 1, 9, 0, tzinfo=UTC)
+
+
 # ---------------------------------------------------------------------------
 # calendar_update_task
 # ---------------------------------------------------------------------------
@@ -368,6 +381,19 @@ def test_update_task_with_status(mocker: pytest.MonkeyPatch) -> None:
     UpdateTaskToolHandler().run_tool({"uid": "task-1", "backend": "icloud", "status": "COMPLETED"})
     call_kwargs = b.update_task.call_args[1]
     assert call_kwargs["status"] == "COMPLETED"
+
+
+def test_update_task_with_datetime_due(mocker: pytest.MonkeyPatch) -> None:
+    b = _make_mock_backend("icloud")
+    b.update_task.return_value = _make_task()
+    mocker.patch.object(tools, "_backends", [b])
+
+    UpdateTaskToolHandler().run_tool(
+        {"uid": "task-1", "backend": "icloud", "due": "2024-08-01T09:00:00+00:00"}
+    )
+    call_kwargs = b.update_task.call_args[1]
+    assert isinstance(call_kwargs["due"], datetime)
+    assert call_kwargs["due"] == datetime(2024, 8, 1, 9, 0, tzinfo=UTC)
 
 
 # ---------------------------------------------------------------------------
