@@ -459,6 +459,43 @@ class UpdateTaskToolHandler(ToolHandler):
         return [TextContent(type="text", text=json.dumps(task.to_dict(), indent=2))]
 
 
+class ListTasksToolHandler(ToolHandler):
+    def __init__(self) -> None:
+        super().__init__("calendar_list_tasks")
+
+    def get_tool_description(self) -> Tool:
+        return Tool(
+            name=self.name,
+            description="List VTODO tasks/reminders across all backends.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "backend": {
+                        "type": "string",
+                        "description": "Optional backend name to filter results.",
+                    },
+                    "calendar_name": {
+                        "type": "string",
+                        "description": "Optional task list / calendar name to filter results.",
+                    },
+                },
+                "required": [],
+            },
+        )
+
+    def run_tool(self, args: dict[str, Any]) -> ToolResult:
+        backend_filter: str | None = args.get("backend")
+        calendar_name: str | None = args.get("calendar_name")
+
+        tasks = []
+        for backend in _backends:
+            if backend_filter is not None and backend.name != backend_filter:
+                continue
+            tasks.extend(backend.list_tasks(calendar_name=calendar_name))
+
+        return [TextContent(type="text", text=json.dumps([t.to_dict() for t in tasks], indent=2))]
+
+
 class DeleteTaskToolHandler(ToolHandler):
     def __init__(self) -> None:
         super().__init__("calendar_delete_task")
@@ -505,6 +542,7 @@ ALL_HANDLERS: list[ToolHandler] = [
     UpdateEventToolHandler(),
     DeleteEventToolHandler(),
     GetFreeBusyToolHandler(),
+    ListTasksToolHandler(),
     CreateTaskToolHandler(),
     UpdateTaskToolHandler(),
     DeleteTaskToolHandler(),

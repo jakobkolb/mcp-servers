@@ -116,3 +116,6 @@ class CalendarBackend(ABC):
 
     @abstractmethod
     def delete_task(self, uid: str) -> None: ...
+
+    @abstractmethod
+    def list_tasks(self, calendar_name: str | None = None) -> list[CalendarTask]: ...
