@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+import json
+from datetime import UTC, date, datetime, timedelta
 from unittest.mock import MagicMock
 
 import pytest
@@ -197,6 +198,7 @@ def test_update_event(mocker: pytest.MonkeyPatch) -> None:
         end=None,
         description=None,
         location=None,
+        alarms=None,
     )
     assert "Updated title" in _text(result)
 
@@ -428,6 +430,90 @@ def test_list_tasks_calendar_name_filter(mocker: pytest.MonkeyPatch) -> None:
 
     ListTasksToolHandler().run_tool({"calendar_name": "Work Tasks"})
     b.list_tasks.assert_called_once_with(calendar_name="Work Tasks")
+
+
+# ---------------------------------------------------------------------------
+# VALARM support in create/update event tools
+# ---------------------------------------------------------------------------
+
+
+def test_create_event_with_alarms(mocker: pytest.MonkeyPatch) -> None:
+    b = _make_mock_backend("icloud")
+    created = _make_event(uid="new-uid", summary="Party")
+    b.create_event.return_value = created
+    mocker.patch.object(tools, "_backends", [b])
+
+    CreateEventToolHandler().run_tool(
+        {
+            "backend": "icloud",
+            "summary": "Party",
+            "start": "2024-07-04T18:00:00",
+            "end": "2024-07-04T22:00:00",
+            "alarms": [15, 30],
+        }
+    )
+    call_kwargs = b.create_event.call_args[1]
+    assert call_kwargs["alarms"] == [timedelta(minutes=15), timedelta(minutes=30)]
+
+
+def test_create_event_no_alarms_passes_none(mocker: pytest.MonkeyPatch) -> None:
+    b = _make_mock_backend("icloud")
+    b.create_event.return_value = _make_event()
+    mocker.patch.object(tools, "_backends", [b])
+
+    CreateEventToolHandler().run_tool(
+        {
+            "backend": "icloud",
+            "summary": "X",
+            "start": "2024-07-04T18:00:00",
+            "end": "2024-07-04T22:00:00",
+        }
+    )
+    call_kwargs = b.create_event.call_args[1]
+    assert call_kwargs["alarms"] is None
+
+
+def test_update_event_with_alarms(mocker: pytest.MonkeyPatch) -> None:
+    b = _make_mock_backend("icloud")
+    b.update_event.return_value = _make_event()
+    mocker.patch.object(tools, "_backends", [b])
+
+    UpdateEventToolHandler().run_tool({"uid": "uid-1", "backend": "icloud", "alarms": [10]})
+    call_kwargs = b.update_event.call_args[1]
+    assert call_kwargs["alarms"] == [timedelta(minutes=10)]
+
+
+def test_update_event_no_alarms_passes_none(mocker: pytest.MonkeyPatch) -> None:
+    b = _make_mock_backend("icloud")
+    b.update_event.return_value = _make_event()
+    mocker.patch.object(tools, "_backends", [b])
+
+    UpdateEventToolHandler().run_tool({"uid": "uid-1", "backend": "icloud", "summary": "X"})
+    call_kwargs = b.update_event.call_args[1]
+    assert call_kwargs["alarms"] is None
+
+
+def test_create_event_alarms_appear_in_response(mocker: pytest.MonkeyPatch) -> None:
+    b = _make_mock_backend("icloud")
+    b.create_event.return_value = CalendarEvent(
+        uid="e-1",
+        summary="Party",
+        start=datetime(2024, 7, 4, 18, 0, tzinfo=UTC),
+        end=datetime(2024, 7, 4, 22, 0, tzinfo=UTC),
+        alarms=[timedelta(minutes=15)],
+    )
+    mocker.patch.object(tools, "_backends", [b])
+
+    result = CreateEventToolHandler().run_tool(
+        {
+            "backend": "icloud",
+            "summary": "Party",
+            "start": "2024-07-04T18:00:00",
+            "end": "2024-07-04T22:00:00",
+        }
+    )
+    data = json.loads(_text(result))
+    assert data["alarms"] == [15]
 
 
 # ---------------------------------------------------------------------------

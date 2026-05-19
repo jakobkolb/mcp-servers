@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 
 class UnsupportedOperationError(Exception):
@@ -17,6 +17,7 @@ class CalendarEvent:
     location: str | None = None
     calendar_name: str = ""
     backend_name: str = ""
+    alarms: list[timedelta] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -28,6 +29,7 @@ class CalendarEvent:
             "location": self.location,
             "calendar_name": self.calendar_name,
             "backend_name": self.backend_name,
+            "alarms": [int(a.total_seconds() / 60) for a in self.alarms],
         }
 
 
@@ -74,6 +76,7 @@ class CalendarBackend(ABC):
         calendar_name: str | None = None,
         description: str | None = None,
         location: str | None = None,
+        alarms: list[timedelta] | None = None,
     ) -> CalendarEvent: ...
 
     @abstractmethod
@@ -85,6 +88,7 @@ class CalendarBackend(ABC):
         end: datetime | None = None,
         description: str | None = None,
         location: str | None = None,
+        alarms: list[timedelta] | None = None,
     ) -> CalendarEvent: ...
 
     @abstractmethod

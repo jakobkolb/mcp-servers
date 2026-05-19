@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Sequence
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from mcp.types import EmbeddedResource, ImageContent, TextContent, Tool
@@ -135,6 +135,11 @@ class CreateEventToolHandler(ToolHandler):
                         "type": "string",
                         "description": "Optional event location.",
                     },
+                    "alarms": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                        "description": "Optional list of reminder offsets in minutes before start.",
+                    },
                 },
                 "required": ["backend", "summary", "start", "end"],
             },
@@ -152,6 +157,8 @@ class CreateEventToolHandler(ToolHandler):
 
         start = datetime.fromisoformat(args["start"])
         end = datetime.fromisoformat(args["end"])
+        alarms_raw: list[int] | None = args.get("alarms")
+        alarms = [timedelta(minutes=m) for m in alarms_raw] if alarms_raw is not None else None
 
         event = backend.create_event(
             summary=args["summary"],
@@ -160,6 +167,7 @@ class CreateEventToolHandler(ToolHandler):
             calendar_name=args.get("calendar_name"),
             description=args.get("description"),
             location=args.get("location"),
+            alarms=alarms,
         )
         return [TextContent(type="text", text=json.dumps(event.to_dict(), indent=2))]
 
@@ -203,6 +211,11 @@ class UpdateEventToolHandler(ToolHandler):
                         "type": "string",
                         "description": "New event location.",
                     },
+                    "alarms": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                        "description": "New list of reminder offsets in minutes before start.",
+                    },
                 },
                 "required": ["uid", "backend"],
             },
@@ -221,6 +234,8 @@ class UpdateEventToolHandler(ToolHandler):
 
         start: datetime | None = datetime.fromisoformat(args["start"]) if "start" in args else None
         end: datetime | None = datetime.fromisoformat(args["end"]) if "end" in args else None
+        alarms_raw: list[int] | None = args.get("alarms")
+        alarms = [timedelta(minutes=m) for m in alarms_raw] if alarms_raw is not None else None
 
         event = backend.update_event(
             uid=args["uid"],
@@ -229,6 +244,7 @@ class UpdateEventToolHandler(ToolHandler):
             end=end,
             description=args.get("description"),
             location=args.get("location"),
+            alarms=alarms,
         )
         return [TextContent(type="text", text=json.dumps(event.to_dict(), indent=2))]
 
