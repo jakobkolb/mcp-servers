@@ -147,7 +147,7 @@ class CaldavBackend(CalendarBackend):
         uid: str,
         summary: str,
         description: str | None,
-        due: date | None,
+        due: date | datetime | None,
         priority: int,
     ) -> bytes:
         cal = icalendar.Calendar()
@@ -339,7 +339,7 @@ class CaldavBackend(CalendarBackend):
         summary: str,
         calendar_name: str | None = None,
         description: str | None = None,
-        due: date | None = None,
+        due: date | datetime | None = None,
         priority: int = 0,
     ) -> CalendarTask:
         collections = self._get_task_collections()
@@ -372,7 +372,7 @@ class CaldavBackend(CalendarBackend):
         uid: str,
         summary: str | None = None,
         description: str | None = None,
-        due: date | None = None,
+        due: date | datetime | None = None,
         priority: int | None = None,
         status: str | None = None,
     ) -> CalendarTask:

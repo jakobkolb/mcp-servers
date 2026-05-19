@@ -415,6 +415,37 @@ def test_create_task_with_optional_fields() -> None:
     assert task.priority == 1
 
 
+def test_create_task_with_datetime_due() -> None:
+    backend = _make_backend()
+    cal = _mock_cal("Tasks")
+    due_dt = datetime(2024, 8, 1, 9, 0, tzinfo=UTC)
+
+    with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
+        MockClient.return_value.principal.return_value.calendars.return_value = [cal]
+        task = backend.create_task(summary="Standup", due=due_dt)
+
+    raw: bytes = cal.save_event.call_args[0][0]
+    assert b"20240801T090000Z" in raw
+    assert task.due == due_dt
+
+
+def test_update_task_with_datetime_due() -> None:
+    backend = _make_backend()
+    cal = _mock_cal("Tasks")
+    uid = "task-datetime-due"
+    due_dt = datetime(2024, 8, 1, 9, 0, tzinfo=UTC)
+    raw_task = _mock_ical_task(uid=uid, summary="Standup")
+    cal.event_by_uid.return_value = raw_task
+
+    with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
+        MockClient.return_value.principal.return_value.calendars.return_value = [cal]
+        updated = backend.update_task(uid=uid, due=due_dt)
+
+    assert raw_task.save.called
+    assert "20240801T090000Z" in raw_task.data
+    assert updated.due == due_dt
+
+
 def test_create_task_target_calendar() -> None:
     backend = _make_backend()
     cal1 = _mock_cal("Personal")

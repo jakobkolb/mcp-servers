@@ -103,7 +103,7 @@ class CalendarBackend(ABC):
         summary: str,
         calendar_name: str | None = None,
         description: str | None = None,
-        due: date | None = None,
+        due: date | datetime | None = None,
         priority: int = 0,
     ) -> CalendarTask: ...
 
@@ -113,7 +113,7 @@ class CalendarBackend(ABC):
         uid: str,
         summary: str | None = None,
         description: str | None = None,
-        due: date | None = None,
+        due: date | datetime | None = None,
         priority: int | None = None,
         status: str | None = None,
     ) -> CalendarTask: ...
