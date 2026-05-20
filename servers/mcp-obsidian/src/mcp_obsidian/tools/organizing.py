@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 from mcp_obsidian.config import Config
 from mcp_obsidian.errors import NoteNotFoundError
-from mcp_obsidian.vault.links import move_file, move_note_with_link_rewrite
+from mcp_obsidian.vault.links import get_backlinks, move_file, move_note_with_link_rewrite
 from mcp_obsidian.vault.path import resolve
 
 
@@ -27,6 +27,10 @@ class MoveFileInput(BaseModel):
 class DeleteNoteInput(BaseModel):
     path: str
     confirm: bool = False
+
+
+class GetBacklinksInput(BaseModel):
+    path: str
 
 
 def get_tools() -> list[Tool]:
@@ -76,6 +80,23 @@ def get_tools() -> list[Tool]:
                 "required": ["path"],
             },
         ),
+        Tool(
+            name="get_backlinks",
+            description=(
+                "Return all notes that contain a [[wiki-link]] pointing to the given note. "
+                "Useful for knowledge graph navigation and finding related notes."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Vault-relative path of the note to find backlinks for.",
+                    },
+                },
+                "required": ["path"],
+            },
+        ),
     ]
 
 
@@ -104,8 +125,13 @@ def get_handlers(config: Config) -> dict[str, Callable[..., Any]]:
         abs_path.unlink()
         return {"path": args.path, "deleted": True, "message": "Deleted."}
 
+    async def handle_get_backlinks(arguments: dict[str, Any]) -> dict[str, Any]:
+        args = GetBacklinksInput(**arguments)
+        return get_backlinks(config.vault_path, args.path)
+
     return {
         "move_note": handle_move_note,
         "move_file": handle_move_file,
         "delete_note": handle_delete_note,
+        "get_backlinks": handle_get_backlinks,
     }

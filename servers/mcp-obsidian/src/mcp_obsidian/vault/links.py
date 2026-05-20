@@ -8,6 +8,39 @@ from typing import Any
 from mcp_obsidian.vault.io import atomic_write
 from mcp_obsidian.vault.path import resolve
 
+_CODE_BLOCK_RE = re.compile(r"```.*?```", re.DOTALL)
+
+
+def get_backlinks(vault_root: str, path: str) -> dict[str, Any]:
+    """Return all notes that contain a [[wiki-link]] pointing to path."""
+    vault = Path(vault_root)
+    target_stem = Path(path).stem
+    escaped = re.escape(target_stem)
+    link_re = re.compile(
+        r"\[\[" + escaped + r"(\|[^\]]+|#[^\]]+(?:\|[^\]]+)?)?\]\]",
+        re.IGNORECASE,
+    )
+
+    backlinks: list[dict[str, Any]] = []
+
+    for md_file in sorted(vault.rglob("*.md")):
+        rel = str(md_file.relative_to(vault))
+        if rel == path:
+            continue
+        try:
+            content = md_file.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+
+        body_no_code = _CODE_BLOCK_RE.sub("", content)
+        lines = body_no_code.splitlines()
+
+        for i, line in enumerate(lines, start=1):
+            if link_re.search(line):
+                backlinks.append({"source_path": rel, "line": i, "context": line.strip()})
+
+    return {"path": path, "backlinks": backlinks, "total": len(backlinks)}
+
 
 def move_note_with_link_rewrite(
     vault_root: str,
