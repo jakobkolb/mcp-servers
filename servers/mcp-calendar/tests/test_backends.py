@@ -436,7 +436,7 @@ def test_update_task_with_datetime_due() -> None:
     uid = "task-datetime-due"
     due_dt = datetime(2024, 8, 1, 9, 0, tzinfo=UTC)
     raw_task = _mock_ical_task(uid=uid, summary="Standup")
-    cal.event_by_uid.return_value = raw_task
+    cal.get_todo_by_uid.return_value = raw_task
 
     with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
         MockClient.return_value.principal.return_value.calendars.return_value = [cal]
@@ -480,7 +480,7 @@ def test_update_task_summary() -> None:
     cal = _mock_cal("Tasks")
     uid = "task-to-update"
     raw_task = _mock_ical_task(uid=uid, summary="Old summary")
-    cal.event_by_uid.return_value = raw_task
+    cal.get_todo_by_uid.return_value = raw_task
 
     with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
         MockClient.return_value.principal.return_value.calendars.return_value = [cal]
@@ -496,7 +496,7 @@ def test_update_task_status() -> None:
     cal = _mock_cal("Tasks")
     uid = "task-status"
     raw_task = _mock_ical_task(uid=uid, summary="Do something")
-    cal.event_by_uid.return_value = raw_task
+    cal.get_todo_by_uid.return_value = raw_task
 
     with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
         MockClient.return_value.principal.return_value.calendars.return_value = [cal]
@@ -509,7 +509,7 @@ def test_update_task_status() -> None:
 def test_update_task_not_found() -> None:
     backend = _make_backend()
     cal = _mock_cal("Tasks")
-    cal.event_by_uid.side_effect = Exception("not found")
+    cal.get_todo_by_uid.side_effect = Exception("not found")
 
     with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
         MockClient.return_value.principal.return_value.calendars.return_value = [cal]
@@ -538,7 +538,7 @@ def test_update_task_patches_in_place() -> None:
     raw_task = MagicMock()
     raw_task.data = custom_vtodo
     raw_task.icalendar_component = _mock_ical_task(uid=uid, summary="Original").icalendar_component
-    cal.event_by_uid.return_value = raw_task
+    cal.get_todo_by_uid.return_value = raw_task
 
     with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
         MockClient.return_value.principal.return_value.calendars.return_value = [cal]
@@ -561,7 +561,7 @@ def test_delete_task() -> None:
     cal = _mock_cal("Tasks")
     uid = "task-to-delete"
     raw_task = _mock_ical_task(uid=uid)
-    cal.event_by_uid.return_value = raw_task
+    cal.get_todo_by_uid.return_value = raw_task
 
     with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
         MockClient.return_value.principal.return_value.calendars.return_value = [cal]
@@ -573,12 +573,46 @@ def test_delete_task() -> None:
 def test_delete_task_not_found() -> None:
     backend = _make_backend()
     cal = _mock_cal("Tasks")
-    cal.event_by_uid.side_effect = Exception("not found")
+    cal.get_todo_by_uid.side_effect = Exception("not found")
 
     with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
         MockClient.return_value.principal.return_value.calendars.return_value = [cal]
         with pytest.raises(ValueError, match="not found"):
             backend.delete_task("ghost-uid")
+
+
+def test_update_task_uses_get_todo_by_uid() -> None:
+    """update_task must use get_todo_by_uid (VTODO), not event_by_uid (VEVENT)."""
+    backend = _make_backend()
+    cal = _mock_cal("Tasks")
+    uid = "task-uid"
+    raw_task = _mock_ical_task(uid=uid, summary="Task")
+    cal.get_todo_by_uid.return_value = raw_task
+    cal.event_by_uid.side_effect = Exception("event_by_uid must not be called for tasks")
+
+    with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
+        MockClient.return_value.principal.return_value.calendars.return_value = [cal]
+        updated = backend.update_task(uid=uid, summary="Updated")
+
+    cal.get_todo_by_uid.assert_called_once_with(uid)
+    assert updated.summary == "Updated"
+
+
+def test_delete_task_uses_get_todo_by_uid() -> None:
+    """delete_task must use get_todo_by_uid (VTODO), not event_by_uid (VEVENT)."""
+    backend = _make_backend()
+    cal = _mock_cal("Tasks")
+    uid = "task-uid"
+    raw_task = _mock_ical_task(uid=uid, summary="Task")
+    cal.get_todo_by_uid.return_value = raw_task
+    cal.event_by_uid.side_effect = Exception("event_by_uid must not be called for tasks")
+
+    with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
+        MockClient.return_value.principal.return_value.calendars.return_value = [cal]
+        backend.delete_task(uid)
+
+    cal.get_todo_by_uid.assert_called_once_with(uid)
+    raw_task.delete.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
