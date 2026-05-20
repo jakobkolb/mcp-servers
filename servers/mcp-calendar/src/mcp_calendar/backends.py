@@ -385,7 +385,7 @@ class CaldavBackend(CalendarBackend):
     ) -> CalendarTask:
         for col in self._get_task_collections():
             try:
-                task_obj = col.event_by_uid(uid)
+                task_obj = col.get_todo_by_uid(uid)
             except Exception:
                 continue
 
@@ -435,7 +435,7 @@ class CaldavBackend(CalendarBackend):
     def delete_task(self, uid: str) -> None:
         for col in self._get_task_collections():
             try:
-                task_obj = col.event_by_uid(uid)
+                task_obj = col.get_todo_by_uid(uid)
                 task_obj.delete()
                 return
             except Exception:
