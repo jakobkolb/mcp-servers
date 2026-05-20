@@ -1,6 +1,6 @@
 # mcp-obsidian
 
-Headless MCP server exposing **19 tools** for reading, writing, searching, and task management against a local Obsidian vault. No Obsidian process required — operates directly on the markdown filesystem.
+Headless MCP server exposing **21 tools** for reading, writing, searching, and task management against a local Obsidian vault. No Obsidian process required — operates directly on the markdown filesystem.
 
 **Transports:** Streamable HTTP on `:8080/mcp` (for k8s / Claude Web) · stdio (for Claude Desktop)
 
@@ -51,33 +51,23 @@ All settings via environment variables:
 | `QMD_URL` | no | — | qmd sidecar URL for semantic search |
 | `LOG_LEVEL` | no | `INFO` | `DEBUG`, `INFO`, `WARNING` |
 | `SEARCH_LIMIT_MAX` | no | `20` | Hard ceiling on `search_notes` results |
-| `MAX_BATCH_READ` | no | `10` | Max paths per `read_multiple_notes` call |
 
 ---
 
 ## Tool reference
 
-### Reading (5 tools)
+### Reading (4 tools)
 
 #### `read_note`
 Read a single markdown note. Returns frontmatter, body, raw content, and file metadata.
 
 ```
-Input:  path (str, required)         vault-relative path, must end in .md
+Input:  path (str, required)               vault-relative path, must end in .md
         pretty_print (bool, default false)
+        include_content (bool, default true)      set false for frontmatter-only reads
+        include_frontmatter (bool, default true)  set false for body-only reads
 Output: path, frontmatter, content, raw, mtime, size
 Errors: NOT_FOUND, NOT_A_NOTE, INVALID_PATH
-```
-
-#### `read_multiple_notes`
-Batch read up to `MAX_BATCH_READ` notes concurrently. Per-note failures are captured in the `error` field and do not abort the batch.
-
-```
-Input:  paths (list[str], required)
-        include_content (bool, default true)
-        include_frontmatter (bool, default true)
-Output: notes (list), errors (count)
-Errors: BATCH_TOO_LARGE
 ```
 
 #### `get_frontmatter`
@@ -120,7 +110,12 @@ Input:  query (str, required)
         search_frontmatter (bool, default false)
         case_sensitive (bool, default false)
         limit (int, default 5, capped at SEARCH_LIMIT_MAX)
-        path_filter (str, optional)    restrict to notes under this folder prefix
+        path_filter (str, optional)              restrict to notes under this folder prefix
+        include_frontmatter (bool, default false) include parsed frontmatter in each result
+        tag_filter (str, optional)               return only notes that have this tag
+                                                 (frontmatter tags: or inline #tag)
+        frontmatter_filter (object, optional)    return only notes where all specified
+                                                 frontmatter fields match (exact match)
 Output: results (list with path, snippet, score, line, frontmatter_match)
         total_found, query, search_mode
 ```
@@ -138,15 +133,18 @@ Output: tags (list with tag, count, sources), total_unique
 ### Writing (4 tools)
 
 #### `write_note`
-Create or write a note (overwrite/append/prepend). All writes are atomic.
+Create or write a note. All writes are atomic.
 
 ```
 Input:  path (str, required)
         content (str, required)
-        mode (str, default "overwrite")    "overwrite" | "append" | "prepend"
+        mode (str, default "overwrite")    "overwrite" | "append" | "prepend" | "create"
         create_dirs (bool, default true)
 Output: path, mode, bytes_written, created
+Errors: ALREADY_EXISTS (mode=create and note already exists)
 ```
+
+`create` mode fails with `ALREADY_EXISTS` if the note already exists, making it safe for initialising notes without clobbering existing content.
 
 #### `patch_note`
 Targeted find-and-replace within a note. Works on raw bytes to handle emoji correctly.
@@ -182,7 +180,7 @@ Output: path, operation, tags_before, tags_after, tags_added, tags_removed
 
 ---
 
-### Organizing (3 tools)
+### Organizing (5 tools)
 
 #### `move_note`
 Move or rename a `.md` note, rewriting `[[wiki-links]]` that reference it across the vault.
@@ -214,6 +212,22 @@ Output: path, deleted, message
 Errors: NOT_FOUND
 ```
 
+#### `get_backlinks`
+Return all notes that contain a `[[wiki-link]]` pointing to the given note. Useful for knowledge graph navigation.
+
+```
+Input:  path (str, required)    vault-relative path of the note to find backlinks for
+Output: path, backlinks (list with source_path, line, context), total
+```
+
+#### `get_outgoing_links`
+Return all `[[wiki-links]]` found in a note body, with line number, context snippet, and an `exists` flag (false means a broken link).
+
+```
+Input:  path (str, required)    vault-relative path of the note to inspect
+Output: path, links (list with target, line, context, exists), total
+```
+
 ---
 
 ### Vault-wide (1 tool)
@@ -239,6 +253,7 @@ Collect all open tasks from the vault. Applies project sequencing (first task pe
 ```
 Input:  context_tag (str, optional)          filter to tasks with this tag, e.g. "#context/pc"
         group (str, optional)                "priority"|"waiting"|"normal"|"notag"|"someday"
+        path (str, optional)                 restrict to tasks in this note or folder prefix
         hide_future_scheduled (bool, default true)
         include_someday (bool, default false)
         include_waiting (bool, default true)
@@ -305,6 +320,23 @@ Output: path, task_line, line, created
 
 ---
 
+### Batch (1 tool)
+
+#### `batch_tool`
+Execute multiple tool calls in a single request. Read-only tools run fully in parallel; write tools are serialised per-path to prevent races. All invocations are schema-validated before any are executed.
+
+```
+Input:  invocations (list, required)
+          Each item: { tool (str), arguments (object) }
+Output: status ("ok" | "validation_failed")
+        results (list with index, tool, result, error per invocation)
+        errors  (list of {index, tool, error}, only present on validation_failed)
+```
+
+Useful for bulk reads (fetch 20 notes in one round-trip) or multi-step workflows where writes to different paths can be parallelised.
+
+---
+
 ## Error codes
 
 | Code | Meaning |
@@ -312,9 +344,9 @@ Output: path, task_line, line, created
 | `NOT_FOUND` | Note path does not exist |
 | `NOT_A_NOTE` | Path exists but is not a `.md` file |
 | `INVALID_PATH` | Path traversal attempt or invalid path |
+| `ALREADY_EXISTS` | `write_note` with `mode=create` but the note already exists |
 | `PATCH_NO_MATCH` | `old_string` not found in file |
 | `PATCH_AMBIGUOUS` | `old_string` matches multiple times; use `replace_all=true` |
-| `BATCH_TOO_LARGE` | `read_multiple_notes` called with too many paths |
 | `TASK_STATE_ERROR` | Line is not an open task (stale line number) |
 | `VAULT_ERROR` | Other vault-level error |
 | `INTERNAL_ERROR` | Unexpected server error |
@@ -406,8 +438,8 @@ make lint
 ```
 
 Test layout:
-- `tests/unit/` — 113 unit tests (vault I/O, task parser, task mutator, search, sequencing)
-- `tests/integration/` — 32 integration tests against a live MCP server subprocess
+- `tests/unit/` — unit tests (vault I/O, task parser, task mutator, search, sequencing, links, batch)
+- `tests/integration/` — integration tests against a live MCP server subprocess
   - `test_read_note_integration.py` — read tool coverage
   - `test_vault_tools_integration.py` — multi-step workflows (tag rename, complete, defer, search, add, project sequencing)
 
