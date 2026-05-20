@@ -152,3 +152,39 @@ def test_list_tags_total_unique_count(tmp_path: Path):
     result = list_all_tags(str(tmp_path))
 
     assert result["total_unique"] == 3
+
+
+# ---------------------------------------------------------------------------
+# search_notes — include_frontmatter
+# ---------------------------------------------------------------------------
+
+
+def test_search_include_frontmatter_returns_fm_dict(tmp_path: Path):
+    _write(
+        tmp_path / "note.md",
+        "---\nstatus: active\ntype: project\n---\n\nFind me here.\n",
+    )
+
+    result = search_notes(str(tmp_path), "Find me", include_frontmatter=True)
+
+    assert result["total_found"] == 1
+    r = result["results"][0]
+    assert "frontmatter" in r
+    assert r["frontmatter"]["status"] == "active"
+    assert r["frontmatter"]["type"] == "project"
+
+
+def test_search_include_frontmatter_false_omits_fm(tmp_path: Path):
+    _write(tmp_path / "note.md", "---\nstatus: active\n---\n\nFind me here.\n")
+
+    result = search_notes(str(tmp_path), "Find me", include_frontmatter=False)
+
+    assert "frontmatter" not in result["results"][0]
+
+
+def test_search_include_frontmatter_default_omits_fm(tmp_path: Path):
+    _write(tmp_path / "note.md", "---\nstatus: active\n---\n\nFind me here.\n")
+
+    result = search_notes(str(tmp_path), "Find me")
+
+    assert "frontmatter" not in result["results"][0]

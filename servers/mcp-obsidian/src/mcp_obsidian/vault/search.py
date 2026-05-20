@@ -16,6 +16,7 @@ def search_notes(
     limit: int = 5,
     path_filter: str | None = None,
     search_limit_max: int = 20,
+    include_frontmatter: bool = False,
 ) -> dict[str, Any]:
     """Regex full-text search across vault .md files."""
     limit = min(limit, search_limit_max)
@@ -81,15 +82,16 @@ def search_notes(
             score = 0.5
             frontmatter_match = True
 
-        results.append(
-            {
-                "path": rel,
-                "snippet": snippet,
-                "score": score,
-                "line": file_line_num,
-                "frontmatter_match": frontmatter_match,
-            }
-        )
+        entry: dict[str, Any] = {
+            "path": rel,
+            "snippet": snippet,
+            "score": score,
+            "line": file_line_num,
+            "frontmatter_match": frontmatter_match,
+        }
+        if include_frontmatter:
+            entry["frontmatter"] = fm_dict
+        results.append(entry)
 
     return {
         "results": results,
