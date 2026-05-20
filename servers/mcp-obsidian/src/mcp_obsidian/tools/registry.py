@@ -18,7 +18,15 @@ from mcp_obsidian.errors import (
     VaultError,
     VaultPathError,
 )
-from mcp_obsidian.tools import organizing, reading, searching, task_tools, vault_wide, writing
+from mcp_obsidian.tools import (
+    batch,
+    organizing,
+    reading,
+    searching,
+    task_tools,
+    vault_wide,
+    writing,
+)
 
 
 def _error_result(code: str, message: str) -> CallToolResult:
@@ -37,6 +45,9 @@ def register_all_tools(server: Server, config: Config) -> None:
     for mod in tool_modules:
         all_tools.extend(mod.get_tools())
         all_handlers.update(mod.get_handlers(config))
+
+    # batch_tool registered last so it can reference all other handlers/tools.
+    batch.register(config, all_tools, all_handlers)
 
     @server.list_tools()
     async def list_tools() -> list[Tool]:
