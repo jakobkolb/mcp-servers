@@ -9,6 +9,7 @@ from mcp_obsidian.vault.io import atomic_write
 from mcp_obsidian.vault.path import resolve
 
 _CODE_BLOCK_RE = re.compile(r"```.*?```", re.DOTALL)
+_WIKI_LINK_RE = re.compile(r"\[\[([^\]|#]+)(?:[|#][^\]]*)?\]\]")
 
 
 def get_backlinks(vault_root: str, path: str) -> dict[str, Any]:
@@ -40,6 +41,29 @@ def get_backlinks(vault_root: str, path: str) -> dict[str, Any]:
                 backlinks.append({"source_path": rel, "line": i, "context": line.strip()})
 
     return {"path": path, "backlinks": backlinks, "total": len(backlinks)}
+
+
+def get_outgoing_links(vault_root: str, path: str) -> dict[str, Any]:
+    """Return all [[wiki-links]] in the note body with existence flags."""
+    vault = Path(vault_root)
+    abs_path = resolve(vault_root, path)
+
+    try:
+        content = abs_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return {"path": path, "links": [], "total": 0}
+
+    body_no_code = _CODE_BLOCK_RE.sub("", content)
+    lines = body_no_code.splitlines()
+
+    links: list[dict[str, Any]] = []
+    for i, line in enumerate(lines, start=1):
+        for m in _WIKI_LINK_RE.finditer(line):
+            target = m.group(1).strip()
+            exists = any(vault.rglob(f"{target}.md"))
+            links.append({"target": target, "line": i, "context": line.strip(), "exists": exists})
+
+    return {"path": path, "links": links, "total": len(links)}
 
 
 def move_note_with_link_rewrite(

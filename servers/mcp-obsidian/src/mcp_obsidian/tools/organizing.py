@@ -8,7 +8,12 @@ from pydantic import BaseModel
 
 from mcp_obsidian.config import Config
 from mcp_obsidian.errors import NoteNotFoundError
-from mcp_obsidian.vault.links import get_backlinks, move_file, move_note_with_link_rewrite
+from mcp_obsidian.vault.links import (
+    get_backlinks,
+    get_outgoing_links,
+    move_file,
+    move_note_with_link_rewrite,
+)
 from mcp_obsidian.vault.path import resolve
 
 
@@ -30,6 +35,10 @@ class DeleteNoteInput(BaseModel):
 
 
 class GetBacklinksInput(BaseModel):
+    path: str
+
+
+class GetOutgoingLinksInput(BaseModel):
     path: str
 
 
@@ -97,6 +106,23 @@ def get_tools() -> list[Tool]:
                 "required": ["path"],
             },
         ),
+        Tool(
+            name="get_outgoing_links",
+            description=(
+                "Return all [[wiki-links]] found in a note body, with line number, "
+                "context snippet, and an exists flag (False means a broken link)."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Vault-relative path of the note to inspect.",
+                    },
+                },
+                "required": ["path"],
+            },
+        ),
     ]
 
 
@@ -129,9 +155,14 @@ def get_handlers(config: Config) -> dict[str, Callable[..., Any]]:
         args = GetBacklinksInput(**arguments)
         return get_backlinks(config.vault_path, args.path)
 
+    async def handle_get_outgoing_links(arguments: dict[str, Any]) -> dict[str, Any]:
+        args = GetOutgoingLinksInput(**arguments)
+        return get_outgoing_links(config.vault_path, args.path)
+
     return {
         "move_note": handle_move_note,
         "move_file": handle_move_file,
         "delete_note": handle_delete_note,
         "get_backlinks": handle_get_backlinks,
+        "get_outgoing_links": handle_get_outgoing_links,
     }
