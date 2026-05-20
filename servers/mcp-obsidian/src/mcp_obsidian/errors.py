@@ -10,6 +10,10 @@ class NoteNotFoundError(VaultError):
     """The requested note path does not exist."""
 
 
+class NoteAlreadyExistsError(VaultError):
+    """write_note with mode='create' but the note already exists."""
+
+
 class NotANoteError(VaultError):
     """The path exists but is not a .md file."""
 

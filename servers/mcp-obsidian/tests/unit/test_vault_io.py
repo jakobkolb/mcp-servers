@@ -1,9 +1,16 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
-from mcp_obsidian.errors import PatchAmbiguousError, PatchNoMatchError, TaskStateError
+from mcp_obsidian.config import Config
+from mcp_obsidian.errors import (
+    NoteAlreadyExistsError,
+    PatchAmbiguousError,
+    PatchNoMatchError,
+    TaskStateError,
+)
 from mcp_obsidian.vault.io import atomic_write, patch_line, patch_note
 
 # ---------------------------------------------------------------------------
@@ -132,3 +139,43 @@ def test_patch_line_first_line(tmp_path: Path):
     patch_line(str(tmp_path), "note.md", 1, lambda ln: ln.replace("[ ]", "[x]"))
 
     assert note.read_text(encoding="utf-8").startswith("- [x] Task")
+
+
+# ---------------------------------------------------------------------------
+# write_note create mode
+# ---------------------------------------------------------------------------
+
+
+def _make_config(vault_path: Path) -> Config:
+    cfg = MagicMock(spec=Config)
+    cfg.vault_path = str(vault_path)
+    return cfg
+
+
+async def _call_write_note(vault_path: Path, arguments: dict) -> dict:
+    from mcp_obsidian.tools.writing import get_handlers
+
+    cfg = _make_config(vault_path)
+    handlers = get_handlers(cfg)
+    return await handlers["write_note"](arguments)
+
+
+@pytest.mark.asyncio
+async def test_write_note_create_mode_creates_new_note(tmp_path: Path):
+    result = await _call_write_note(
+        tmp_path, {"path": "new.md", "content": "hello\n", "mode": "create"}
+    )
+
+    assert result["created"] is True
+    assert (tmp_path / "new.md").read_text(encoding="utf-8") == "hello\n"
+
+
+@pytest.mark.asyncio
+async def test_write_note_create_mode_raises_when_note_exists(tmp_path: Path):
+    (tmp_path / "existing.md").write_text("already here\n", encoding="utf-8")
+
+    with pytest.raises(NoteAlreadyExistsError):
+        await _call_write_note(
+            tmp_path,
+            {"path": "existing.md", "content": "new content\n", "mode": "create"},
+        )

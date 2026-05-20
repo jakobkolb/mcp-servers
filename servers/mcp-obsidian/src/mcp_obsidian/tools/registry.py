@@ -10,6 +10,7 @@ from mcp_obsidian.config import Config
 from mcp_obsidian.errors import (
     BatchTooLargeError,
     NotANoteError,
+    NoteAlreadyExistsError,
     NoteNotFoundError,
     PatchAmbiguousError,
     PatchNoMatchError,
@@ -57,6 +58,8 @@ def register_all_tools(server: Server, config: Config) -> None:
                     )
                 ]
             )
+        except NoteAlreadyExistsError as e:
+            return _error_result("ALREADY_EXISTS", str(e))
         except NoteNotFoundError as e:
             return _error_result("NOT_FOUND", str(e))
         except NotANoteError as e:

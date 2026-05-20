@@ -7,6 +7,7 @@ from mcp.types import Tool
 from pydantic import BaseModel
 
 from mcp_obsidian.config import Config
+from mcp_obsidian.errors import NoteAlreadyExistsError
 from mcp_obsidian.vault.frontmatter import build_note_content
 from mcp_obsidian.vault.io import atomic_write, patch_note, read_note
 from mcp_obsidian.vault.path import resolve
@@ -15,7 +16,7 @@ from mcp_obsidian.vault.path import resolve
 class WriteNoteInput(BaseModel):
     path: str
     content: str
-    mode: Literal["overwrite", "append", "prepend"] = "overwrite"
+    mode: Literal["overwrite", "append", "prepend", "create"] = "overwrite"
     create_dirs: bool = True
 
 
@@ -50,8 +51,11 @@ def get_tools() -> list[Tool]:
                     "content": {"type": "string"},
                     "mode": {
                         "type": "string",
-                        "enum": ["overwrite", "append", "prepend"],
+                        "enum": ["overwrite", "append", "prepend", "create"],
                         "default": "overwrite",
+                        "description": (
+                            "'create' fails with ALREADY_EXISTS if the note already exists."
+                        ),
                     },
                     "create_dirs": {"type": "boolean", "default": True},
                 },
@@ -117,7 +121,11 @@ def get_handlers(config: Config) -> dict[str, Callable[..., Any]]:
         abs_path = resolve(config.vault_path, args.path)
         created = not abs_path.exists()
 
-        if args.mode == "overwrite":
+        if args.mode == "create":
+            if abs_path.exists():
+                raise NoteAlreadyExistsError(f"Note already exists: {args.path}")
+            content_bytes = args.content.encode("utf-8")
+        elif args.mode == "overwrite":
             content_bytes = args.content.encode("utf-8")
         elif args.mode == "append":
             existing = abs_path.read_bytes() if abs_path.exists() else b""
