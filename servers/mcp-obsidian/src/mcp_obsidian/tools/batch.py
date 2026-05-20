@@ -13,7 +13,6 @@ from mcp_obsidian.config import Config
 _READ_ONLY_TOOLS = frozenset(
     {
         "read_note",
-        "read_multiple_notes",
         "get_frontmatter",
         "list_directory",
         "get_vault_stats",
