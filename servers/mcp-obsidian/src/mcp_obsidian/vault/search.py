@@ -40,6 +40,7 @@ def search_notes(
     search_limit_max: int = 20,
     include_frontmatter: bool = False,
     tag_filter: str | None = None,
+    frontmatter_filter: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Regex full-text search across vault .md files."""
     limit = min(limit, search_limit_max)
@@ -67,6 +68,11 @@ def search_notes(
         fm_dict, body = parse_fm(raw)
 
         if tag_filter and not _note_has_tag(fm_dict, body, tag_filter):
+            continue
+
+        if frontmatter_filter and not all(
+            fm_dict.get(k) == v for k, v in frontmatter_filter.items()
+        ):
             continue
 
         content_match = None

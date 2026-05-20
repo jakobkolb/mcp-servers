@@ -50,6 +50,15 @@ def get_tools() -> list[Tool]:
                         ),
                         "default": None,
                     },
+                    "frontmatter_filter": {
+                        "type": "object",
+                        "description": (
+                            "Return only notes whose frontmatter contains all "
+                            "key/value pairs (exact equality). "
+                            'E.g. {"type": "project", "status": "active"}.'
+                        ),
+                        "default": None,
+                    },
                 },
                 "required": ["query"],
             },
@@ -75,6 +84,7 @@ def get_handlers(config: Config) -> dict[str, Callable[..., Any]]:
             search_limit_max=config.search_limit_max,
             include_frontmatter=arguments.get("include_frontmatter", False),
             tag_filter=arguments.get("tag_filter"),
+            frontmatter_filter=arguments.get("frontmatter_filter"),
         )
 
     async def handle_list_all_tags(arguments: dict[str, Any]) -> dict[str, Any]:
