@@ -25,6 +25,7 @@ class GetTasksInput(BaseModel):
     project_tasks_only: bool = False
     exclude_projects: bool = False
     apply_sequencing: bool = True
+    path: str | None = None
 
 
 class CompleteTaskInput(BaseModel):
@@ -84,6 +85,14 @@ def get_tools() -> list[Tool]:
                         "type": "boolean",
                         "default": True,
                         "description": "Apply GTD sequencing to #project notes.",
+                    },
+                    "path": {
+                        "type": "string",
+                        "description": (
+                            "Restrict to a single note or folder prefix, "
+                            "e.g. 'Projects/MyProject.md' or 'Projects/'."
+                        ),
+                        "default": None,
                     },
                 },
             },
@@ -176,6 +185,7 @@ def get_handlers(config: Config) -> dict[str, Callable[..., Any]]:
             args.project_tasks_only,
             args.exclude_projects,
             args.apply_sequencing,
+            args.path,
         )
 
     async def handle_complete_task(arguments: dict[str, Any]) -> dict[str, Any]:

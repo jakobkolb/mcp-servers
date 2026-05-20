@@ -131,6 +131,7 @@ def collect_all_tasks(
     project_tasks_only: bool = False,
     exclude_projects: bool = False,
     apply_sequencing: bool = True,
+    path: str | None = None,
 ) -> dict[str, Any]:
     vault = Path(vault_root)
     tasks: list[dict[str, Any]] = []
@@ -138,6 +139,8 @@ def collect_all_tasks(
 
     for md_file in vault.rglob("*.md"):
         rel_path = str(md_file.relative_to(vault))
+        if path and not rel_path.startswith(path):
+            continue
         try:
             raw = md_file.read_text(encoding="utf-8", errors="replace")
             fm, _ = parse_fm(raw)
