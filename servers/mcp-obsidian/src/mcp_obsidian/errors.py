@@ -18,10 +18,6 @@ class NotANoteError(VaultError):
     """The path exists but is not a .md file."""
 
 
-class BatchTooLargeError(VaultError):
-    """read_multiple_notes called with more paths than MAX_BATCH_READ."""
-
-
 class PatchNoMatchError(VaultError):
     """patch_note: old_string not found in file."""
 

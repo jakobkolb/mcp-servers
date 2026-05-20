@@ -8,7 +8,6 @@ from mcp.types import CallToolResult, TextContent, Tool
 
 from mcp_obsidian.config import Config
 from mcp_obsidian.errors import (
-    BatchTooLargeError,
     NotANoteError,
     NoteAlreadyExistsError,
     NoteNotFoundError,
@@ -81,8 +80,6 @@ def register_all_tools(server: Server, config: Config) -> None:
             return _error_result("PATCH_NO_MATCH", str(e))
         except PatchAmbiguousError as e:
             return _error_result("PATCH_AMBIGUOUS", str(e))
-        except BatchTooLargeError as e:
-            return _error_result("BATCH_TOO_LARGE", str(e))
         except TaskStateError as e:
             return _error_result("TASK_STATE_ERROR", str(e))
         except VaultError as e:

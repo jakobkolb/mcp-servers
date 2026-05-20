@@ -83,3 +83,52 @@ def test_empty_note(tmp_vault: Path):
     assert note.frontmatter == {}
     assert note.content == ""
     assert note.size == 0
+
+
+# ---------------------------------------------------------------------------
+# read_note handler – include_content / include_frontmatter flags
+# ---------------------------------------------------------------------------
+
+
+def _write(path: Path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
+
+
+async def _call_read_note(vault_path: Path, arguments: dict) -> dict:
+    from unittest.mock import MagicMock
+
+    from mcp_obsidian.config import Config
+    from mcp_obsidian.tools.reading import get_handlers
+
+    cfg = MagicMock(spec=Config)
+    cfg.vault_path = str(vault_path)
+    return await get_handlers(cfg)["read_note"](arguments)
+
+
+@pytest.mark.asyncio
+async def test_read_note_include_content_false_omits_body(tmp_path: Path):
+    _write(tmp_path / "note.md", "---\ntitle: hi\n---\n\nBody text.\n")
+
+    result = await _call_read_note(tmp_path, {"path": "note.md", "include_content": False})
+
+    assert "content" not in result or result["content"] is None
+
+
+@pytest.mark.asyncio
+async def test_read_note_include_frontmatter_false_omits_frontmatter(tmp_path: Path):
+    _write(tmp_path / "note.md", "---\ntitle: hi\n---\n\nBody text.\n")
+
+    result = await _call_read_note(tmp_path, {"path": "note.md", "include_frontmatter": False})
+
+    assert "frontmatter" not in result or result["frontmatter"] is None
+
+
+@pytest.mark.asyncio
+async def test_read_note_defaults_include_both(tmp_path: Path):
+    _write(tmp_path / "note.md", "---\ntitle: hi\n---\n\nBody text.\n")
+
+    result = await _call_read_note(tmp_path, {"path": "note.md"})
+
+    assert result["content"] is not None
+    assert result["frontmatter"] is not None
