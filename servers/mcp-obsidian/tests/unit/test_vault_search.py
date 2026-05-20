@@ -235,3 +235,51 @@ def test_search_tag_filter_no_filter_returns_all(tmp_path: Path):
     result = search_notes(str(tmp_path), "some content", tag_filter=None)
 
     assert result["total_found"] == 2
+
+
+# ---------------------------------------------------------------------------
+# search_notes – frontmatter_filter
+# ---------------------------------------------------------------------------
+
+
+def test_search_frontmatter_filter_matches_field(tmp_path: Path):
+    _write(tmp_path / "project.md", "---\ntype: project\nstatus: active\n---\n\nBody.\n")
+    _write(tmp_path / "note.md", "---\ntype: note\n---\n\nBody.\n")
+
+    result = search_notes(str(tmp_path), "", frontmatter_filter={"type": "project"})
+
+    paths = [r["path"] for r in result["results"]]
+    assert "project.md" in paths
+    assert "note.md" not in paths
+
+
+def test_search_frontmatter_filter_multiple_fields_all_must_match(tmp_path: Path):
+    _write(tmp_path / "match.md", "---\ntype: project\nstatus: active\n---\n\nBody.\n")
+    _write(tmp_path / "partial.md", "---\ntype: project\nstatus: done\n---\n\nBody.\n")
+
+    result = search_notes(
+        str(tmp_path), "", frontmatter_filter={"type": "project", "status": "active"}
+    )
+
+    assert result["total_found"] == 1
+    assert result["results"][0]["path"] == "match.md"
+
+
+def test_search_frontmatter_filter_composes_with_query(tmp_path: Path):
+    _write(tmp_path / "both.md", "---\ntype: project\n---\n\nFind me here.\n")
+    _write(tmp_path / "fm_only.md", "---\ntype: project\n---\n\nNot matching.\n")
+    _write(tmp_path / "query_only.md", "Find me here.\n")
+
+    result = search_notes(str(tmp_path), "Find me", frontmatter_filter={"type": "project"})
+
+    assert result["total_found"] == 1
+    assert result["results"][0]["path"] == "both.md"
+
+
+def test_search_frontmatter_filter_none_returns_all(tmp_path: Path):
+    _write(tmp_path / "a.md", "content\n")
+    _write(tmp_path / "b.md", "content\n")
+
+    result = search_notes(str(tmp_path), "content", frontmatter_filter=None)
+
+    assert result["total_found"] == 2
