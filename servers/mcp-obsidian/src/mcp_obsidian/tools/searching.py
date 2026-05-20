@@ -37,6 +37,11 @@ def get_tools() -> list[Tool]:
                         "description": "Restrict to notes under this folder prefix.",
                         "default": None,
                     },
+                    "include_frontmatter": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "When true, include parsed frontmatter dict in each result.",
+                    },
                 },
                 "required": ["query"],
             },
@@ -60,6 +65,7 @@ def get_handlers(config: Config) -> dict[str, Callable[..., Any]]:
             limit=arguments.get("limit", 5),
             path_filter=arguments.get("path_filter"),
             search_limit_max=config.search_limit_max,
+            include_frontmatter=arguments.get("include_frontmatter", False),
         )
 
     async def handle_list_all_tags(arguments: dict[str, Any]) -> dict[str, Any]:
