@@ -188,3 +188,50 @@ def test_search_include_frontmatter_default_omits_fm(tmp_path: Path):
     result = search_notes(str(tmp_path), "Find me")
 
     assert "frontmatter" not in result["results"][0]
+
+
+# ---------------------------------------------------------------------------
+# search_notes – tag_filter
+# ---------------------------------------------------------------------------
+
+
+def test_search_tag_filter_matches_frontmatter_tag(tmp_path: Path):
+    _write(tmp_path / "tagged.md", "---\ntags:\n  - project\n---\n\nBody.\n")
+    _write(tmp_path / "other.md", "No tags here.\n")
+
+    result = search_notes(str(tmp_path), "", tag_filter="#project")
+
+    paths = [r["path"] for r in result["results"]]
+    assert "tagged.md" in paths
+    assert "other.md" not in paths
+
+
+def test_search_tag_filter_matches_inline_tag(tmp_path: Path):
+    _write(tmp_path / "tagged.md", "This note has #context/pc tag.\n")
+    _write(tmp_path / "other.md", "Nothing here.\n")
+
+    result = search_notes(str(tmp_path), "", tag_filter="#context/pc")
+
+    paths = [r["path"] for r in result["results"]]
+    assert "tagged.md" in paths
+    assert "other.md" not in paths
+
+
+def test_search_tag_filter_composes_with_query(tmp_path: Path):
+    _write(tmp_path / "both.md", "---\ntags:\n  - project\n---\n\nFind me here.\n")
+    _write(tmp_path / "tag_only.md", "---\ntags:\n  - project\n---\n\nNo match.\n")
+    _write(tmp_path / "query_only.md", "Find me here.\n")
+
+    result = search_notes(str(tmp_path), "Find me", tag_filter="#project")
+
+    assert result["total_found"] == 1
+    assert result["results"][0]["path"] == "both.md"
+
+
+def test_search_tag_filter_no_filter_returns_all(tmp_path: Path):
+    _write(tmp_path / "a.md", "some content\n")
+    _write(tmp_path / "b.md", "some content\n")
+
+    result = search_notes(str(tmp_path), "some content", tag_filter=None)
+
+    assert result["total_found"] == 2
