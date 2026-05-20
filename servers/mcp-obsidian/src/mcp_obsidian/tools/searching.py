@@ -42,6 +42,14 @@ def get_tools() -> list[Tool]:
                         "default": False,
                         "description": "When true, include parsed frontmatter dict in each result.",
                     },
+                    "tag_filter": {
+                        "type": "string",
+                        "description": (
+                            "Return only notes carrying this tag "
+                            "(frontmatter or inline). E.g. '#project'."
+                        ),
+                        "default": None,
+                    },
                 },
                 "required": ["query"],
             },
@@ -66,6 +74,7 @@ def get_handlers(config: Config) -> dict[str, Callable[..., Any]]:
             path_filter=arguments.get("path_filter"),
             search_limit_max=config.search_limit_max,
             include_frontmatter=arguments.get("include_frontmatter", False),
+            tag_filter=arguments.get("tag_filter"),
         )
 
     async def handle_list_all_tags(arguments: dict[str, Any]) -> dict[str, Any]:

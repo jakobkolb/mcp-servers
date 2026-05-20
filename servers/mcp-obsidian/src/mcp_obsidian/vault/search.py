@@ -6,6 +6,28 @@ from typing import Any
 
 from mcp_obsidian.vault.frontmatter import parse as parse_fm
 
+_INLINE_TAG_RE = re.compile(r"(?<!\w)#([a-zA-Z0-9_/\-äöüÄÖÜß]+)")
+_CODE_BLOCK_RE = re.compile(r"```.*?```", re.DOTALL)
+
+
+def _note_has_tag(fm_dict: dict[str, Any], body: str, tag: str) -> bool:
+    """Return True if the note carries tag (with or without leading #)."""
+    normalized = tag.lstrip("#").lower()
+    raw_tags = fm_dict.get("tags", [])
+    if isinstance(raw_tags, str):
+        raw_tags = [raw_tags]
+    for t in raw_tags:
+        if t.lstrip("#").lower() == normalized:
+            return True
+    body_no_code = _CODE_BLOCK_RE.sub("", body)
+    body_no_headings = "\n".join(
+        line for line in body_no_code.splitlines() if not re.match(r"^#{1,6}\s", line)
+    )
+    for m in _INLINE_TAG_RE.finditer(body_no_headings):
+        if m.group(1).lower() == normalized:
+            return True
+    return False
+
 
 def search_notes(
     vault_root: str,
@@ -17,6 +39,7 @@ def search_notes(
     path_filter: str | None = None,
     search_limit_max: int = 20,
     include_frontmatter: bool = False,
+    tag_filter: str | None = None,
 ) -> dict[str, Any]:
     """Regex full-text search across vault .md files."""
     limit = min(limit, search_limit_max)
@@ -42,6 +65,9 @@ def search_notes(
             continue
 
         fm_dict, body = parse_fm(raw)
+
+        if tag_filter and not _note_has_tag(fm_dict, body, tag_filter):
+            continue
 
         content_match = None
         fm_match = None
