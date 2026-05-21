@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -223,5 +223,5 @@ def collect_all_tasks(
         "tasks": tasks,
         "projects_without_next_action": projects_without_na,
         "total_tasks": len(tasks),
-        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "generated_at": datetime.now(UTC).isoformat(),
     }

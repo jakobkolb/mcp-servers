@@ -62,7 +62,7 @@ def get_handlers(config: Config) -> dict[str, Callable[..., Any]]:
             "total_size_bytes": total_size,
             "recently_modified": top10,
             "vault_path": config.vault_path,
-            "generated_at": datetime.utcnow().isoformat() + "Z",
+            "generated_at": datetime.now(UTC).isoformat(),
         }
 
     return {"get_vault_stats": handle_get_vault_stats}
