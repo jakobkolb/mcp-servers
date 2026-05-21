@@ -97,6 +97,9 @@ def assign_group(task: RawTask, page_tags: list[str]) -> str:
         return "someday"
     if "#waiting-on" in task.tags:
         return "waiting"
+    # Priority if the task carries a priority emoji, OR if it belongs to a project
+    # note that is itself tagged with a priority emoji in its frontmatter — tasks
+    # inherit their project's priority.
     if "🔼" in task.raw_line or "#🔼" in page_tags:
         return "priority"
     if len(task.tags) == 0:
