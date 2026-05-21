@@ -8,9 +8,9 @@ from mcp_obsidian.tasks.parser import (
     GLOBAL_EXCLUDE,
     RawTask,
     collect_tasks_from_file,
-    extract_tags,
     is_future_scheduled,
 )
+from mcp_obsidian.vault.frontmatter import extract_tags
 from mcp_obsidian.vault.frontmatter import parse as parse_fm
 
 GROUP_ORDER = {"waiting": 0, "priority": 1, "normal": 2, "notag": 3, "someday": 4}

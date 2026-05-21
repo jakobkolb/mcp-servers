@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 from mcp_obsidian.config import Config
 from mcp_obsidian.errors import NoteAlreadyExistsError
-from mcp_obsidian.vault.frontmatter import build_note_content
+from mcp_obsidian.vault.frontmatter import build_note_content, extract_tags
 from mcp_obsidian.vault.io import atomic_write, patch_note, read_note
 from mcp_obsidian.vault.path import resolve
 
@@ -177,10 +177,7 @@ def get_handlers(config: Config) -> dict[str, Callable[..., Any]]:
         args = ManageTagsInput(**arguments)
         note = read_note(config.vault_path, args.path)
 
-        raw = note.frontmatter.get("tags", [])
-        if isinstance(raw, str):
-            raw = [raw]
-        tags_before = [t.lstrip("#") for t in raw]
+        tags_before = [t.lstrip("#") for t in extract_tags(note.frontmatter)]
 
         if args.operation == "list":
             return {

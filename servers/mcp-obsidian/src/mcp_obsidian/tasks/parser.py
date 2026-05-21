@@ -6,6 +6,8 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
+from mcp_obsidian.vault.frontmatter import extract_tags
+
 GLOBAL_EXCLUDE: dict[str, Any] = {
     "folders": ["Utility"],
     "tags": ["#exclude-master-tasklist", "#completed"],
@@ -150,13 +152,6 @@ def collect_tasks_from_file(
             tasks.append(task)
 
     return tasks
-
-
-def extract_tags(fm: dict[str, Any]) -> list[str]:
-    raw = fm.get("tags", [])
-    if isinstance(raw, str):
-        raw = [raw]
-    return [f"#{t.lstrip('#')}" for t in raw]
 
 
 def is_future_scheduled(task: RawTask) -> bool:

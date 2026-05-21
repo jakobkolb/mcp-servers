@@ -4,6 +4,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from mcp_obsidian.vault.frontmatter import extract_tags
 from mcp_obsidian.vault.frontmatter import parse as parse_fm
 
 _INLINE_TAG_RE = re.compile(r"(?<!\w)#([a-zA-Z0-9_/\-äöüÄÖÜß]+)")
@@ -13,10 +14,7 @@ _CODE_BLOCK_RE = re.compile(r"```.*?```", re.DOTALL)
 def _note_has_tag(fm_dict: dict[str, Any], body: str, tag: str) -> bool:
     """Return True if the note carries tag (with or without leading #)."""
     normalized = tag.lstrip("#").lower()
-    raw_tags = fm_dict.get("tags", [])
-    if isinstance(raw_tags, str):
-        raw_tags = [raw_tags]
-    for t in raw_tags:
+    for t in extract_tags(fm_dict):
         if t.lstrip("#").lower() == normalized:
             return True
     body_no_code = _CODE_BLOCK_RE.sub("", body)
@@ -135,9 +133,6 @@ def search_notes(
 
 def list_all_tags(vault_root: str) -> dict[str, Any]:
     """Return all tags in the vault with occurrence counts."""
-    INLINE_TAG_RE = re.compile(r"(?<!\w)#([a-zA-Z0-9_/\-äöüÄÖÜß]+)")
-    CODE_BLOCK_RE = re.compile(r"```.*?```", re.DOTALL)
-
     vault = Path(vault_root)
     tag_data: dict[str, dict[str, Any]] = {}
 
@@ -149,21 +144,17 @@ def list_all_tags(vault_root: str) -> dict[str, Any]:
 
         fm_dict, body = parse_fm(raw)
 
-        raw_tags = fm_dict.get("tags", [])
-        if isinstance(raw_tags, str):
-            raw_tags = [raw_tags]
-        for tag in raw_tags:
-            normalized = f"#{tag.lstrip('#')}"
+        for normalized in extract_tags(fm_dict):
             if normalized not in tag_data:
                 tag_data[normalized] = {"tag": normalized, "count": 0, "sources": set()}
             tag_data[normalized]["count"] += 1
             tag_data[normalized]["sources"].add("frontmatter")
 
-        body_no_code = CODE_BLOCK_RE.sub("", body)
+        body_no_code = _CODE_BLOCK_RE.sub("", body)
         body_no_headings = "\n".join(
             line for line in body_no_code.splitlines() if not re.match(r"^#{1,6}\s", line)
         )
-        for m in INLINE_TAG_RE.finditer(body_no_headings):
+        for m in _INLINE_TAG_RE.finditer(body_no_headings):
             normalized = f"#{m.group(1)}"
             if normalized not in tag_data:
                 tag_data[normalized] = {"tag": normalized, "count": 0, "sources": set()}
