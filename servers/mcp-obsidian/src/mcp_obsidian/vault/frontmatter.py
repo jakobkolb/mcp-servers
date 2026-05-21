@@ -37,6 +37,14 @@ def serialize(frontmatter: dict[str, Any]) -> str:
     return stream.getvalue()
 
 
+def extract_tags(fm: dict[str, Any]) -> list[str]:
+    """Return frontmatter tags normalised to #-prefixed strings."""
+    raw = fm.get("tags", [])
+    if isinstance(raw, str):
+        raw = [raw]
+    return [f"#{t.lstrip('#')}" for t in raw]
+
+
 def build_note_content(frontmatter: dict[str, Any] | None, body: str) -> str:
     """Combine frontmatter and body into a complete note string."""
     if not frontmatter:
