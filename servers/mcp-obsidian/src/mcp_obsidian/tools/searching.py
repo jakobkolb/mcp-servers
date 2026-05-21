@@ -4,9 +4,22 @@ from collections.abc import Callable
 from typing import Any
 
 from mcp.types import Tool
+from pydantic import BaseModel
 
 from mcp_obsidian.config import Config
 from mcp_obsidian.vault.search import list_all_tags, search_notes
+
+
+class SearchNotesInput(BaseModel):
+    query: str
+    search_content: bool = True
+    search_frontmatter: bool = False
+    case_sensitive: bool = False
+    limit: int = 5
+    path_filter: str | None = None
+    include_frontmatter: bool = False
+    tag_filter: str | None = None
+    frontmatter_filter: dict[str, Any] | None = None
 
 
 def get_tools() -> list[Tool]:
@@ -73,18 +86,19 @@ def get_tools() -> list[Tool]:
 
 def get_handlers(config: Config) -> dict[str, Callable[..., Any]]:
     async def handle_search_notes(arguments: dict[str, Any]) -> dict[str, Any]:
+        args = SearchNotesInput(**arguments)
         return search_notes(
             vault_root=config.vault_path,
-            query=arguments["query"],
-            search_content=arguments.get("search_content", True),
-            search_frontmatter=arguments.get("search_frontmatter", False),
-            case_sensitive=arguments.get("case_sensitive", False),
-            limit=arguments.get("limit", 5),
-            path_filter=arguments.get("path_filter"),
+            query=args.query,
+            search_content=args.search_content,
+            search_frontmatter=args.search_frontmatter,
+            case_sensitive=args.case_sensitive,
+            limit=args.limit,
+            path_filter=args.path_filter,
             search_limit_max=config.search_limit_max,
-            include_frontmatter=arguments.get("include_frontmatter", False),
-            tag_filter=arguments.get("tag_filter"),
-            frontmatter_filter=arguments.get("frontmatter_filter"),
+            include_frontmatter=args.include_frontmatter,
+            tag_filter=args.tag_filter,
+            frontmatter_filter=args.frontmatter_filter,
         )
 
     async def handle_list_all_tags(arguments: dict[str, Any]) -> dict[str, Any]:
