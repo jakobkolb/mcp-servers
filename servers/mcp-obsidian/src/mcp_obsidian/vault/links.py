@@ -7,9 +7,8 @@ from typing import Any
 
 from mcp_obsidian.vault.io import atomic_write
 from mcp_obsidian.vault.path import resolve
-
-_CODE_BLOCK_RE = re.compile(r"```.*?```", re.DOTALL)
-_WIKI_LINK_RE = re.compile(r"\[\[([^\]|#]+)(?:[|#][^\]]*)?\]\]")
+from mcp_obsidian.vault.patterns import CODE_BLOCK_RE as _CODE_BLOCK_RE
+from mcp_obsidian.vault.patterns import WIKI_LINK_RE as _WIKI_LINK_RE
 
 
 def get_backlinks(vault_root: str, path: str) -> dict[str, Any]:
