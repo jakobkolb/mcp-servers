@@ -103,7 +103,11 @@ class CreateEventToolHandler(ToolHandler):
     def get_tool_description(self) -> Tool:
         return Tool(
             name=self.name,
-            description="Create a new calendar event on a specific backend.",
+            description=(
+                "Create a new calendar event on a specific backend. "
+                "Supports both timed events (ISO 8601 datetime) and all-day events "
+                "(YYYY-MM-DD date strings — omit the time component entirely)."
+            ),
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -117,11 +121,19 @@ class CreateEventToolHandler(ToolHandler):
                     },
                     "start": {
                         "type": "string",
-                        "description": "Start datetime as ISO 8601 string.",
+                        "description": (
+                            "Start of the event. Use YYYY-MM-DD for an all-day event, "
+                            "or a full ISO 8601 datetime (e.g. 2024-06-01T10:00:00+02:00) "
+                            "for a timed event. Do NOT use T00:00:00 for all-day events."
+                        ),
                     },
                     "end": {
                         "type": "string",
-                        "description": "End datetime as ISO 8601 string.",
+                        "description": (
+                            "End of the event. Use YYYY-MM-DD for an all-day event "
+                            "(exclusive: the day after the last day), "
+                            "or a full ISO 8601 datetime for a timed event."
+                        ),
                     },
                     "calendar_name": {
                         "type": "string",
@@ -155,8 +167,12 @@ class CreateEventToolHandler(ToolHandler):
         if backend is None:
             raise RuntimeError(f"Backend '{backend_name}' not found")
 
-        start = datetime.fromisoformat(args["start"])
-        end = datetime.fromisoformat(args["end"])
+        start_str: str = args["start"]
+        end_str: str = args["end"]
+        start = (
+            datetime.fromisoformat(start_str) if "T" in start_str else date.fromisoformat(start_str)
+        )
+        end = datetime.fromisoformat(end_str) if "T" in end_str else date.fromisoformat(end_str)
         alarms_raw: list[int] | None = args.get("alarms")
         alarms = [timedelta(minutes=m) for m in alarms_raw] if alarms_raw is not None else None
 
@@ -197,11 +213,17 @@ class UpdateEventToolHandler(ToolHandler):
                     },
                     "start": {
                         "type": "string",
-                        "description": "New start datetime as ISO 8601 string.",
+                        "description": (
+                            "New start. Use YYYY-MM-DD for an all-day event, "
+                            "or a full ISO 8601 datetime for a timed event."
+                        ),
                     },
                     "end": {
                         "type": "string",
-                        "description": "New end datetime as ISO 8601 string.",
+                        "description": (
+                            "New end. Use YYYY-MM-DD for an all-day event, "
+                            "or a full ISO 8601 datetime for a timed event."
+                        ),
                     },
                     "description": {
                         "type": "string",
@@ -232,8 +254,14 @@ class UpdateEventToolHandler(ToolHandler):
         if backend is None:
             raise RuntimeError(f"Backend '{backend_name}' not found")
 
-        start: datetime | None = datetime.fromisoformat(args["start"]) if "start" in args else None
-        end: datetime | None = datetime.fromisoformat(args["end"]) if "end" in args else None
+        start: datetime | date | None = None
+        if "start" in args:
+            s = args["start"]
+            start = datetime.fromisoformat(s) if "T" in s else date.fromisoformat(s)
+        end: datetime | date | None = None
+        if "end" in args:
+            e = args["end"]
+            end = datetime.fromisoformat(e) if "T" in e else date.fromisoformat(e)
         alarms_raw: list[int] | None = args.get("alarms")
         alarms = [timedelta(minutes=m) for m in alarms_raw] if alarms_raw is not None else None
 
