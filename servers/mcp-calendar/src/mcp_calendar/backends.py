@@ -197,6 +197,34 @@ class CaldavBackend(CalendarBackend):
             backend_name=self.name,
         )
 
+    def _find_event_by_uid(self, cal: caldav.Calendar, uid: str) -> caldav.CalendarObjectResource:
+        """Look up an event by UID, falling back to a client-side scan.
+
+        Some CalDAV servers (notably iCloud) don't reliably support the
+        UID REPORT query that event_by_uid() relies on server-side.
+        """
+        try:
+            return cal.event_by_uid(uid)
+        except Exception:
+            for event in cal.events():
+                if str(event.icalendar_component.get("uid", "")) == uid:
+                    return event
+            raise
+
+    def _find_task_by_uid(self, col: caldav.Calendar, uid: str) -> caldav.CalendarObjectResource:
+        """Look up a task by UID, falling back to a client-side scan.
+
+        Some CalDAV servers (notably iCloud) don't reliably support the
+        UID REPORT query that get_todo_by_uid() relies on server-side.
+        """
+        try:
+            return col.get_todo_by_uid(uid)
+        except Exception:
+            for task in col.todos():
+                if str(task.icalendar_component.get("uid", "")) == uid:
+                    return task
+            raise
+
     def list_calendars(self) -> list[str]:
         return [c.name for c in self._get_calendars()]
 
@@ -263,7 +291,7 @@ class CaldavBackend(CalendarBackend):
     ) -> CalendarEvent:
         for cal in self._get_calendars():
             try:
-                event = cal.event_by_uid(uid)
+                event = self._find_event_by_uid(cal, uid)
             except Exception:
                 continue
 
@@ -334,7 +362,7 @@ class CaldavBackend(CalendarBackend):
     def delete_event(self, uid: str) -> None:
         for cal in self._get_calendars():
             try:
-                event = cal.event_by_uid(uid)
+                event = self._find_event_by_uid(cal, uid)
                 event.delete()
                 return
             except Exception:
@@ -385,7 +413,7 @@ class CaldavBackend(CalendarBackend):
     ) -> CalendarTask:
         for col in self._get_task_collections():
             try:
-                task_obj = col.get_todo_by_uid(uid)
+                task_obj = self._find_task_by_uid(col, uid)
             except Exception:
                 continue
 
@@ -435,7 +463,7 @@ class CaldavBackend(CalendarBackend):
     def delete_task(self, uid: str) -> None:
         for col in self._get_task_collections():
             try:
-                task_obj = col.get_todo_by_uid(uid)
+                task_obj = self._find_task_by_uid(col, uid)
                 task_obj.delete()
                 return
             except Exception:

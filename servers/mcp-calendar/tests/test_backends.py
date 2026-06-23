@@ -222,6 +222,38 @@ def test_delete_event() -> None:
     raw.delete.assert_called_once()
 
 
+def test_update_event_falls_back_to_scan_when_event_by_uid_broken() -> None:
+    """iCloud's UID REPORT query is broken; fall back to scanning events()."""
+    backend = _make_backend()
+    cal = _mock_cal("Work")
+    uid = "uid-broken-report"
+    cal.event_by_uid.side_effect = Exception("UID REPORT not supported")
+    raw = _mock_ical_event(uid=uid, summary="Old title")
+    cal.events.return_value = [raw]
+
+    with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
+        MockClient.return_value.principal.return_value.calendars.return_value = [cal]
+        updated = backend.update_event(uid=uid, summary="New title")
+
+    assert updated.summary == "New title"
+    assert updated.uid == uid
+
+
+def test_delete_event_falls_back_to_scan_when_event_by_uid_broken() -> None:
+    backend = _make_backend()
+    cal = _mock_cal("Work")
+    uid = "uid-broken-report"
+    cal.event_by_uid.side_effect = Exception("UID REPORT not supported")
+    raw = _mock_ical_event(uid=uid)
+    cal.events.return_value = [raw]
+
+    with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
+        MockClient.return_value.principal.return_value.calendars.return_value = [cal]
+        backend.delete_event(uid)
+
+    raw.delete.assert_called_once()
+
+
 # ---------------------------------------------------------------------------
 # get_freebusy
 # ---------------------------------------------------------------------------
@@ -579,6 +611,38 @@ def test_delete_task_not_found() -> None:
         MockClient.return_value.principal.return_value.calendars.return_value = [cal]
         with pytest.raises(ValueError, match="not found"):
             backend.delete_task("ghost-uid")
+
+
+def test_update_task_falls_back_to_scan_when_get_todo_by_uid_broken() -> None:
+    """iCloud's UID REPORT query is broken; fall back to scanning todos()."""
+    backend = _make_backend()
+    cal = _mock_cal("Tasks")
+    uid = "task-broken-report"
+    cal.get_todo_by_uid.side_effect = Exception("UID REPORT not supported")
+    raw_task = _mock_ical_task(uid=uid, summary="Old summary")
+    cal.todos.return_value = [raw_task]
+
+    with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
+        MockClient.return_value.principal.return_value.calendars.return_value = [cal]
+        updated = backend.update_task(uid=uid, summary="New summary")
+
+    assert updated.summary == "New summary"
+    assert updated.uid == uid
+
+
+def test_delete_task_falls_back_to_scan_when_get_todo_by_uid_broken() -> None:
+    backend = _make_backend()
+    cal = _mock_cal("Tasks")
+    uid = "task-broken-report"
+    cal.get_todo_by_uid.side_effect = Exception("UID REPORT not supported")
+    raw_task = _mock_ical_task(uid=uid)
+    cal.todos.return_value = [raw_task]
+
+    with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
+        MockClient.return_value.principal.return_value.calendars.return_value = [cal]
+        backend.delete_task(uid)
+
+    raw_task.delete.assert_called_once()
 
 
 def test_update_task_uses_get_todo_by_uid() -> None:
