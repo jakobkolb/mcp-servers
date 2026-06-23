@@ -167,6 +167,46 @@ def test_create_event(mocker: pytest.MonkeyPatch) -> None:
     assert "new-uid" in text
 
 
+def test_create_event_all_day_passes_date_objects(mocker: pytest.MonkeyPatch) -> None:
+    b = _make_mock_backend("icloud")
+    b.create_event.return_value = _make_event(uid="allday-uid", summary="Holiday")
+    mocker.patch.object(tools, "_backends", [b])
+
+    CreateEventToolHandler().run_tool(
+        {
+            "backend": "icloud",
+            "summary": "Holiday",
+            "start": "2024-06-10",
+            "end": "2024-06-11",
+        }
+    )
+
+    call_kwargs = b.create_event.call_args.kwargs
+    assert isinstance(call_kwargs["start"], date) and not isinstance(call_kwargs["start"], datetime)
+    assert isinstance(call_kwargs["end"], date) and not isinstance(call_kwargs["end"], datetime)
+    assert call_kwargs["start"] == date(2024, 6, 10)
+    assert call_kwargs["end"] == date(2024, 6, 11)
+
+
+def test_create_event_timed_still_passes_datetime(mocker: pytest.MonkeyPatch) -> None:
+    b = _make_mock_backend("icloud")
+    b.create_event.return_value = _make_event()
+    mocker.patch.object(tools, "_backends", [b])
+
+    CreateEventToolHandler().run_tool(
+        {
+            "backend": "icloud",
+            "summary": "Meeting",
+            "start": "2024-06-10T09:00:00",
+            "end": "2024-06-10T10:00:00",
+        }
+    )
+
+    call_kwargs = b.create_event.call_args.kwargs
+    assert isinstance(call_kwargs["start"], datetime)
+    assert isinstance(call_kwargs["end"], datetime)
+
+
 # ---------------------------------------------------------------------------
 # calendar_update_event
 # ---------------------------------------------------------------------------
@@ -201,6 +241,25 @@ def test_update_event(mocker: pytest.MonkeyPatch) -> None:
         alarms=None,
     )
     assert "Updated title" in _text(result)
+
+
+def test_update_event_all_day_passes_date_objects(mocker: pytest.MonkeyPatch) -> None:
+    b = _make_mock_backend("icloud")
+    b.update_event.return_value = _make_event()
+    mocker.patch.object(tools, "_backends", [b])
+
+    UpdateEventToolHandler().run_tool(
+        {
+            "uid": "uid-1",
+            "backend": "icloud",
+            "start": "2024-06-10",
+            "end": "2024-06-11",
+        }
+    )
+
+    call_kwargs = b.update_event.call_args.kwargs
+    assert isinstance(call_kwargs["start"], date) and not isinstance(call_kwargs["start"], datetime)
+    assert isinstance(call_kwargs["end"], date) and not isinstance(call_kwargs["end"], datetime)
 
 
 # ---------------------------------------------------------------------------
