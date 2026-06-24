@@ -83,6 +83,35 @@ def _mock_ical_event(
     return event
 
 
+def _mock_recurring_event(
+    uid: str = "rrule-uid",
+    summary: str = "Chor",
+    dtstart: datetime = datetime(2026, 6, 2, 18, 0, tzinfo=UTC),
+    dtend: datetime = datetime(2026, 6, 2, 19, 0, tzinfo=UTC),
+    rrule: dict[str, str] | None = None,
+    exdates: list[datetime] | None = None,
+) -> MagicMock:
+    """Build a mock caldav event whose .data is a real recurring VEVENT."""
+    cal_obj = icalendar.Calendar()
+    cal_obj.add("prodid", "-//mcp-calendar//EN")
+    cal_obj.add("version", "2.0")
+    vevent = icalendar.Event()
+    vevent.add("uid", uid)
+    vevent.add("summary", summary)
+    vevent.add("dtstart", dtstart)
+    vevent.add("dtend", dtend)
+    vevent.add("rrule", rrule or {"freq": "weekly"})
+    for ex in exdates or []:
+        vevent.add("exdate", ex)
+    cal_obj.add_component(vevent)
+    ical_str = cal_obj.to_ical().decode("utf-8")
+
+    event = MagicMock()
+    event.icalendar_component = vevent
+    event.data = ical_str
+    return event
+
+
 # ---------------------------------------------------------------------------
 # list_calendars
 # ---------------------------------------------------------------------------
@@ -144,6 +173,83 @@ def test_list_events_handles_error() -> None:
 
     assert len(events) == 1
     assert events[0].summary == "OK"
+
+
+def test_list_events_expands_weekly_rrule_for_full_range() -> None:
+    """Regression test for #70: caldav's expand=True dropped occurrences."""
+    backend = _make_backend()
+    cal = _mock_cal("Work")
+    master = _mock_recurring_event(
+        uid="weekly-uid",
+        dtstart=datetime(2026, 6, 2, 18, 0, tzinfo=UTC),
+        dtend=datetime(2026, 6, 2, 19, 0, tzinfo=UTC),
+    )
+    cal.date_search.return_value = [master]
+
+    start = datetime(2026, 6, 1, tzinfo=UTC)
+    end = datetime(2026, 6, 30, 23, 59, 59, tzinfo=UTC)
+
+    with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
+        MockClient.return_value.principal.return_value.calendars.return_value = [cal]
+        events = backend.list_events(start, end)
+
+    starts = sorted(e.start for e in events)
+    assert starts == [
+        datetime(2026, 6, 2, 18, 0, tzinfo=UTC),
+        datetime(2026, 6, 9, 18, 0, tzinfo=UTC),
+        datetime(2026, 6, 16, 18, 0, tzinfo=UTC),
+        datetime(2026, 6, 23, 18, 0, tzinfo=UTC),
+        datetime(2026, 6, 30, 18, 0, tzinfo=UTC),
+    ]
+    assert all(e.uid == "weekly-uid" for e in events)
+    assert all((e.end - e.start) == timedelta(hours=1) for e in events)
+
+
+def test_list_events_respects_exdate_in_rrule_expansion() -> None:
+    backend = _make_backend()
+    cal = _mock_cal("Work")
+    master = _mock_recurring_event(
+        uid="weekly-uid",
+        dtstart=datetime(2026, 6, 2, 18, 0, tzinfo=UTC),
+        dtend=datetime(2026, 6, 2, 19, 0, tzinfo=UTC),
+        exdates=[datetime(2026, 6, 16, 18, 0, tzinfo=UTC)],
+    )
+    cal.date_search.return_value = [master]
+
+    start = datetime(2026, 6, 1, tzinfo=UTC)
+    end = datetime(2026, 6, 30, 23, 59, 59, tzinfo=UTC)
+
+    with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
+        MockClient.return_value.principal.return_value.calendars.return_value = [cal]
+        events = backend.list_events(start, end)
+
+    starts = sorted(e.start for e in events)
+    assert datetime(2026, 6, 16, 18, 0, tzinfo=UTC) not in starts
+    assert len(starts) == 4
+
+
+def test_list_events_expands_all_day_daily_rrule() -> None:
+    backend = _make_backend()
+    cal = _mock_cal("Work")
+    master = _mock_recurring_event(
+        uid="allday-uid",
+        dtstart=date(2026, 6, 1),
+        dtend=date(2026, 6, 2),
+        rrule={"freq": "daily"},
+    )
+    cal.date_search.return_value = [master]
+
+    start = datetime(2026, 6, 1)
+    end = datetime(2026, 6, 5, 23, 59, 59)
+
+    with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
+        MockClient.return_value.principal.return_value.calendars.return_value = [cal]
+        events = backend.list_events(start, end)
+
+    starts = sorted(e.start for e in events)
+    assert starts == [date(2026, 6, d) for d in range(1, 6)]
+    assert all(not isinstance(s, datetime) for s in starts)
+    assert all((e.end - e.start) == timedelta(days=1) for e in events)
 
 
 # ---------------------------------------------------------------------------
