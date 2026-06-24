@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import copy
 import logging
 import uuid
 from datetime import UTC, date, datetime, timedelta
+from typing import Any
 
 import caldav
 import icalendar
+from dateutil.rrule import rrulestr
 
 from .calendar import CalendarBackend, CalendarEvent, CalendarTask, UnsupportedOperationError
 from .config import GoogleConfig, ICloudConfig, NextcloudConfig
@@ -83,7 +86,9 @@ class CaldavBackend(CalendarBackend):
         return calendars
 
     def _parse_event(self, caldav_event: caldav.Event, cal_name: str) -> CalendarEvent:
-        comp = caldav_event.icalendar_component
+        return self._parse_event_component(caldav_event.icalendar_component, cal_name)
+
+    def _parse_event_component(self, comp: Any, cal_name: str) -> CalendarEvent:
         uid = str(comp.get("uid", ""))
         summary = str(comp.get("summary", ""))
         description_prop = comp.get("description")
@@ -115,6 +120,66 @@ class CaldavBackend(CalendarBackend):
             backend_name=self.name,
             alarms=alarms,
         )
+
+    def _expand_occurrences(
+        self, caldav_event: caldav.Event, start: datetime, end: datetime
+    ) -> list[Any]:
+        """Return one VEVENT component per occurrence of caldav_event within [start, end].
+
+        caldav's own RRULE expansion (server-side or client-side, depending on the
+        backend) has been observed to silently drop occurrences for weekly recurring
+        events (see issue #70). Expand RRULE + EXDATE ourselves instead of trusting it.
+        """
+        raw_cal = icalendar.Calendar.from_ical(caldav_event.data)
+        vevents = [c for c in raw_cal.walk() if c.name == "VEVENT"]
+        master = next((v for v in vevents if v.get("RRULE") is not None), None)
+        if master is None:
+            return vevents
+
+        overrides = [v for v in vevents if v is not master]
+        return overrides + self._expand_rrule(master, start, end)
+
+    def _expand_rrule(self, master: Any, start: datetime, end: datetime) -> list[Any]:
+        dtstart = master["DTSTART"].dt
+        all_day = not isinstance(dtstart, datetime)
+        dtstart_dt = datetime(dtstart.year, dtstart.month, dtstart.day) if all_day else dtstart
+
+        dtend_prop = master.get("DTEND")
+        duration = (dtend_prop.dt - dtstart) if dtend_prop is not None else timedelta(0)
+
+        if all_day:
+            # rule occurrences are naive midnight datetimes; compare against naive bounds
+            range_start = datetime(start.year, start.month, start.day)
+            range_end = datetime(end.year, end.month, end.day)
+        elif dtstart_dt.tzinfo is not None:
+            range_start = start if start.tzinfo is not None else start.replace(tzinfo=UTC)
+            range_end = end if end.tzinfo is not None else end.replace(tzinfo=UTC)
+        else:
+            range_start = start.replace(tzinfo=None)
+            range_end = end.replace(tzinfo=None)
+
+        exdates: set[Any] = set()
+        exdate_prop = master.get("EXDATE")
+        if exdate_prop is not None:
+            items = exdate_prop if isinstance(exdate_prop, list) else [exdate_prop]
+            for item in items:
+                exdates.update(d.dt for d in item.dts)
+
+        rule = rrulestr(master["RRULE"].to_ical().decode(), dtstart=dtstart_dt)
+
+        occurrences = []
+        for occ_dt in rule.between(range_start, range_end, inc=True):
+            occ_value = occ_dt.date() if all_day else occ_dt
+            if occ_value in exdates:
+                continue
+            occ = copy.deepcopy(master)
+            del occ["DTSTART"]
+            occ.add("DTSTART", occ_value)
+            if "DTEND" in occ:
+                del occ["DTEND"]
+                occ.add("DTEND", occ_value + duration)
+            occurrences.append(occ)
+        return occurrences
 
     def _build_ical(
         self,
@@ -233,10 +298,13 @@ class CaldavBackend(CalendarBackend):
         for cal in self._get_calendars():
             try:
                 cal_name: str = cal.name or ""
-                raw_events = cal.date_search(start=start, end=end, expand=True)
+                # expand=False: recurrences are expanded ourselves in _expand_occurrences,
+                # since caldav's own RRULE expansion has been observed to drop occurrences.
+                raw_events = cal.date_search(start=start, end=end, expand=False)
                 for e in raw_events:
                     try:
-                        events.append(self._parse_event(e, cal_name))
+                        for comp in self._expand_occurrences(e, start, end):
+                            events.append(self._parse_event_component(comp, cal_name))
                     except Exception:
                         logger.exception("Failed to parse event in calendar %s", cal_name)
             except Exception:
