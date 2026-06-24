@@ -6,9 +6,8 @@ from typing import Any
 
 from mcp_obsidian.vault.frontmatter import extract_tags
 from mcp_obsidian.vault.frontmatter import parse as parse_fm
-
-_INLINE_TAG_RE = re.compile(r"(?<!\w)#([a-zA-Z0-9_/\-äöüÄÖÜß]+)")
-_CODE_BLOCK_RE = re.compile(r"```.*?```", re.DOTALL)
+from mcp_obsidian.vault.patterns import CODE_BLOCK_RE as _CODE_BLOCK_RE
+from mcp_obsidian.vault.patterns import INLINE_TAG_RE as _INLINE_TAG_RE
 
 
 def _note_has_tag(fm_dict: dict[str, Any], body: str, tag: str) -> bool:

@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from mcp_obsidian.vault.frontmatter import extract_tags
+from mcp_obsidian.vault.patterns import INLINE_TAG_RE
 
 GLOBAL_EXCLUDE: dict[str, Any] = {
     "folders": ["Utility"],
@@ -32,8 +33,6 @@ DATE_RE: dict[str, re.Pattern[str]] = {
 }
 
 RECURRENCE_RE = re.compile(r"🔁\s?([^📅⏳🛫➕✅🔁\n]+)")
-
-INLINE_TAG_RE = re.compile(r"(?<!\w)#([a-zA-Z0-9_/\-äöüÄÖÜß]+)")
 
 PRIORITY_MAP = [
     ("🔺", "highest"),
