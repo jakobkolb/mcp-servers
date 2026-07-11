@@ -67,7 +67,7 @@ def test_parse_extracts_priority_highest():
 
 
 def test_parse_extracts_priority_medium():
-    task = parse_task_line("- [ ] Medium task 🔼", "note.md", 1)
+    task = parse_task_line("- [ ] Medium task ⏫", "note.md", 1)
     assert task is not None
     assert task.priority == "medium"
 

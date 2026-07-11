@@ -32,6 +32,28 @@ def test_build_task_line_with_priority():
     assert "🔺" in line
 
 
+def test_build_task_line_high_priority_uses_single_up_arrow():
+    """high priority must produce 🔼 (one arrow), not ⏫ (two arrows)."""
+    line = _build_task_line("Do this", [], None, None, None, "high", False)
+    assert "🔼" in line
+    assert "⏫" not in line
+
+
+def test_add_task_starts_on_own_line_when_file_has_no_trailing_newline(tmp_path: Path):
+    """Task must land on its own line even if the file doesn't end with \\n."""
+    note = tmp_path / "note.md"
+    note.write_bytes(b"- [ ] Existing task")  # no trailing newline
+
+    add_task_to_file(str(tmp_path), "note.md", "New task", [], None, None, None, "", False, None)
+
+    lines = note.read_text(encoding="utf-8").splitlines()
+    assert any(ln.strip() == "- [ ] Existing task" for ln in lines)
+    assert any(ln.strip() == "- [ ] New task" for ln in lines)
+    # Each task must be on its own line – they must not share a line
+    for ln in lines:
+        assert not ("Existing task" in ln and "New task" in ln)
+
+
 def test_build_task_line_with_stamp_created():
     line = _build_task_line("Task", [], None, None, None, "", True)
     assert "➕" in line
@@ -53,7 +75,7 @@ def test_build_task_line_full():
     )
     assert line.startswith("- [ ] Complex task")
     assert "#context/pc" in line
-    assert "⏫" in line
+    assert "🔼" in line
     assert "➕" in line
     assert "⏳2026-06-01" in line
     assert "📅2026-06-15" in line
