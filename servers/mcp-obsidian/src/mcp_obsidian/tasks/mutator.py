@@ -24,8 +24,8 @@ DATE_PATTERN: dict[str, re.Pattern[str]] = {
 
 PRIORITY_EMOJI = {
     "highest": "🔺",
-    "high": "⏫",
-    "medium": "🔼",
+    "high": "🔼",
+    "medium": "⏫",
     "low": "🔽",
     "lowest": "⏬",
     "": "",

@@ -36,8 +36,8 @@ RECURRENCE_RE = re.compile(r"🔁\s?([^📅⏳🛫➕✅🔁\n]+)")
 
 PRIORITY_MAP = [
     ("🔺", "highest"),
-    ("⏫", "high"),
-    ("🔼", "medium"),
+    ("🔼", "high"),
+    ("⏫", "medium"),
     ("🔽", "low"),
     ("⏬", "lowest"),
 ]

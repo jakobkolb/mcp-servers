@@ -32,6 +32,18 @@ def test_build_task_line_with_priority():
     assert "🔺" in line
 
 
+def test_build_task_line_high_priority_uses_single_arrow():
+    line = _build_task_line("High priority task", [], None, None, None, "high", False)
+    assert "🔼" in line
+    assert "⏫" not in line
+
+
+def test_build_task_line_medium_priority_uses_double_arrow():
+    line = _build_task_line("Medium priority task", [], None, None, None, "medium", False)
+    assert "⏫" in line
+    assert "🔼" not in line
+
+
 def test_build_task_line_with_stamp_created():
     line = _build_task_line("Task", [], None, None, None, "", True)
     assert "➕" in line
@@ -53,7 +65,7 @@ def test_build_task_line_full():
     )
     assert line.startswith("- [ ] Complex task")
     assert "#context/pc" in line
-    assert "⏫" in line
+    assert "🔼" in line
     assert "➕" in line
     assert "⏳2026-06-01" in line
     assert "📅2026-06-15" in line
