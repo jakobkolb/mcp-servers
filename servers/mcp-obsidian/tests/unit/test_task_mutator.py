@@ -229,6 +229,19 @@ def test_add_task_appends_to_end_when_heading_missing(tmp_path: Path):
     assert content.endswith("- [ ] Task\n")
 
 
+def test_add_task_starts_on_own_line_when_no_trailing_newline(tmp_path: Path):
+    note = tmp_path / "note.md"
+    note.write_bytes(b"- [ ] Existing task")  # intentionally no trailing newline
+
+    add_task_to_file(str(tmp_path), "note.md", "New task", [], None, None, None, "", False, None)
+
+    lines = note.read_text(encoding="utf-8").splitlines()
+    assert any(ln.strip() == "- [ ] Existing task" for ln in lines)
+    assert any(ln.strip() == "- [ ] New task" for ln in lines)
+    for ln in lines:
+        assert not ("Existing task" in ln and "New task" in ln)
+
+
 # ---------------------------------------------------------------------------
 # _find_insert_position
 # ---------------------------------------------------------------------------

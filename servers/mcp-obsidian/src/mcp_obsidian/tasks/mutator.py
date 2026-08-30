@@ -139,6 +139,8 @@ def add_task_to_file(
     content = abs_path.read_text(encoding="utf-8", errors="replace")
     lines = content.splitlines(keepends=True)
     insert_idx = _find_insert_position(lines, append_under_heading)
+    if insert_idx > 0 and not lines[insert_idx - 1].endswith("\n"):
+        lines[insert_idx - 1] += "\n"
     lines.insert(insert_idx, task_line + "\n")
     atomic_write(abs_path, "".join(lines).encode("utf-8"))
 
