@@ -93,6 +93,53 @@ jobs:
           helm package chart/mcp-server --version "$VERSION" --app-version "$VERSION"
           helm push "mcp-server-${VERSION}.tgz" oci://ghcr.io/${{ github.repository_owner }}/charts
 
+  notify-knowledge-base:
+    needs: [publish-chart]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine which servers changed since the previous tag
+        id: changed
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          ALL_SERVERS=$(make list-servers | jq -r '.[]')
+          PREV_TAG=$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)
+
+          if [ -z "$PREV_TAG" ]; then
+            # First tag ever - nothing to diff against, treat everything as changed.
+            CHANGED="$ALL_SERVERS"
+          else
+            CHANGED_PATHS=$(git diff --name-only "$PREV_TAG"..HEAD -- servers/)
+            CHANGED=$(for s in $ALL_SERVERS; do
+              echo "$CHANGED_PATHS" | grep -q "^servers/$s/" && echo "$s"
+            done)
+          fi
+
+          SERVERS_JSON=$(printf '%s\n' $CHANGED | jq -R . | jq -sc 'map(select(length > 0))')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "servers=$SERVERS_JSON" >> "$GITHUB_OUTPUT"
+          echo "Previous tag: ${PREV_TAG:-<none>}"
+          echo "Changed servers: $SERVERS_JSON"
+
+      # Cross-repo trigger, so this needs a PAT with write access to
+      # knowledge-base - the default GITHUB_TOKEN can't dispatch to another
+      # repo. knowledge-base's own workflow does the actual git push/PR
+      # creation using its own GITHUB_TOKEN once dispatched.
+      - name: Dispatch chart-bump PR to knowledge-base
+        if: steps.changed.outputs.servers != '[]'
+        env:
+          GH_TOKEN: ${{ secrets.KNOWLEDGE_BASE_DISPATCH_TOKEN }}
+        run: |
+          jq -n \
+            --arg version "${{ steps.changed.outputs.version }}" \
+            --argjson servers '${{ steps.changed.outputs.servers }}' \
+            '{event_type: "bump-mcp-server", client_payload: {version: $version, servers: $servers}}' \
+            | gh api repos/jakobkolb/knowledge-base/dispatches --input -
+
   build:
     needs: [lint-and-test, discover-servers]
     if: needs.discover-servers.outputs.servers != '[]'
