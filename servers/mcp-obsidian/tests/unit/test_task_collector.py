@@ -225,7 +225,177 @@ def test_audit_is_stable_across_context_filters(tmp_path: Path):
     _write(tmp_path / "Projects" / "empty.md", "---\ntags: [project]\n---\n## Todo\n")
 
     unfiltered = collect_all_tasks(str(tmp_path), available_on=_TODAY)
-    by_pc = collect_all_tasks(str(tmp_path), context_tag="#context/pc", available_on=_TODAY)
-    by_phone = collect_all_tasks(str(tmp_path), context_tag="#context/phone", available_on=_TODAY)
+    by_pc = collect_all_tasks(str(tmp_path), tags=["#context/pc"], available_on=_TODAY)
+    by_phone = collect_all_tasks(str(tmp_path), tags=["#context/phone"], available_on=_TODAY)
 
     assert _audit(unfiltered) == _audit(by_pc) == _audit(by_phone) == {"empty"}
+
+
+# ---------------------------------------------------------------------------
+# task provenance (#83)
+# ---------------------------------------------------------------------------
+
+
+def test_project_task_flag_true_for_project_notes(tmp_path: Path):
+    _write(
+        tmp_path / "Projects" / "p.md",
+        "---\ntags: [project]\n---\n## Todo\n- [ ] In a project\n",
+    )
+
+    result = collect_all_tasks(str(tmp_path), available_on=_TODAY)
+
+    assert result["tasks"][0]["project_task"] is True
+
+
+def test_project_task_flag_false_for_other_notes(tmp_path: Path):
+    _write(tmp_path / "daily.md", "- [ ] Loose task\n")
+
+    result = collect_all_tasks(str(tmp_path), available_on=_TODAY)
+
+    assert result["tasks"][0]["project_task"] is False
+
+
+def test_project_task_flag_does_not_depend_on_sequencing(tmp_path: Path):
+    # The field says where the task came from, not whether sequencing ran.
+    _write(
+        tmp_path / "Projects" / "p.md",
+        "---\ntags: [project]\n---\n## Todo\n- [ ] First\n- [ ] Second\n",
+    )
+
+    result = collect_all_tasks(str(tmp_path), available_on=_TODAY, apply_sequencing=False)
+
+    assert len(result["tasks"]) == 2
+    assert all(t["project_task"] is True for t in result["tasks"])
+
+
+def test_is_sequenced_field_is_gone(tmp_path: Path):
+    _write(tmp_path / "daily.md", "- [ ] Loose task\n")
+
+    result = collect_all_tasks(str(tmp_path), available_on=_TODAY)
+
+    assert "is_sequenced" not in result["tasks"][0]
+
+
+# ---------------------------------------------------------------------------
+# facets (#82)
+# ---------------------------------------------------------------------------
+
+_MIXED = """---
+tags: [project]
+---
+## Todo
+- [ ] Waiting and priority 🔼 #waiting-on #context/phone
+"""
+
+
+def test_priority_task_is_returned_by_both_of_its_facets(tmp_path: Path):
+    # The old single-valued group put this task in "waiting" and it became
+    # invisible to a priority query. Facets are not mutually exclusive.
+    _write(tmp_path / "Projects" / "p.md", _MIXED)
+
+    by_priority = collect_all_tasks(str(tmp_path), available_on=_TODAY, priority=True)
+    by_waiting = collect_all_tasks(str(tmp_path), available_on=_TODAY, tags=["#waiting-on"])
+    by_context = collect_all_tasks(str(tmp_path), available_on=_TODAY, tags=["#context/phone"])
+
+    assert by_priority["total_tasks"] == 1
+    assert by_waiting["total_tasks"] == 1
+    assert by_context["total_tasks"] == 1
+
+
+def test_someday_task_with_marker_is_still_priority(tmp_path: Path):
+    _write(tmp_path / "n.md", "- [ ] Someday but flagged 🔼 #someday\n")
+
+    result = collect_all_tasks(str(tmp_path), available_on=_TODAY, priority=True)
+
+    assert result["total_tasks"] == 1
+
+
+def test_priority_inherited_from_project_frontmatter(tmp_path: Path):
+    _write(
+        tmp_path / "Projects" / "p.md",
+        "---\ntags: [project, 🔼]\n---\n## Todo\n- [ ] No marker of its own\n",
+    )
+
+    result = collect_all_tasks(str(tmp_path), available_on=_TODAY, priority=True)
+
+    assert result["total_tasks"] == 1
+    assert result["tasks"][0]["priority"] is True
+
+
+def test_priority_false_excludes_priority_tasks(tmp_path: Path):
+    _write(tmp_path / "n.md", "- [ ] Flagged 🔼\n- [ ] Plain\n")
+
+    result = collect_all_tasks(str(tmp_path), available_on=_TODAY, priority=False)
+
+    assert {t["text"] for t in result["tasks"]} == {"Plain"}
+
+
+def test_multi_context_task_matches_either_context(tmp_path: Path):
+    _write(tmp_path / "n.md", "- [ ] Both #context/pc #context/home\n")
+
+    for tag in ("#context/pc", "#context/home"):
+        result = collect_all_tasks(str(tmp_path), available_on=_TODAY, tags=[tag])
+        assert result["total_tasks"] == 1, tag
+
+
+def test_tags_filter_requires_all_of_them(tmp_path: Path):
+    _write(tmp_path / "n.md", "- [ ] Both #someday #context/pc\n- [ ] Only one #context/pc\n")
+
+    result = collect_all_tasks(str(tmp_path), available_on=_TODAY, tags=["#someday", "#context/pc"])
+
+    assert [t["text"].split(" #")[0] for t in result["tasks"]] == ["Both"]
+
+
+def test_exclude_tags_removes_matching_tasks(tmp_path: Path):
+    _write(tmp_path / "n.md", "- [ ] Later #someday\n- [ ] Now #context/pc\n")
+
+    result = collect_all_tasks(str(tmp_path), available_on=_TODAY, exclude_tags=["#someday"])
+
+    assert [t["text"].split(" #")[0] for t in result["tasks"]] == ["Now"]
+
+
+def test_untagged_facet(tmp_path: Path):
+    _write(tmp_path / "n.md", "- [ ] Bare\n- [ ] Tagged #context/pc\n")
+
+    only = collect_all_tasks(str(tmp_path), available_on=_TODAY, untagged=True)
+    without = collect_all_tasks(str(tmp_path), available_on=_TODAY, untagged=False)
+
+    assert [t["text"] for t in only["tasks"]] == ["Bare"]
+    assert [t["text"].split(" #")[0] for t in without["tasks"]] == ["Tagged"]
+
+
+def test_unfiltered_returns_someday_and_waiting(tmp_path: Path):
+    _write(tmp_path / "n.md", "- [ ] A #someday\n- [ ] B #waiting-on\n- [ ] C\n")
+
+    result = collect_all_tasks(str(tmp_path), available_on=_TODAY)
+
+    assert result["total_tasks"] == 3
+
+
+def test_no_task_appears_twice_and_total_matches(tmp_path: Path):
+    _write(tmp_path / "n.md", "- [ ] Many facets 🔼 #someday #waiting-on #context/pc\n")
+
+    result = collect_all_tasks(str(tmp_path), available_on=_TODAY)
+
+    keys = [(t["path"], t["line"]) for t in result["tasks"]]
+    assert len(keys) == len(set(keys))
+    assert result["total_tasks"] == len(result["tasks"]) == 1
+
+
+def test_group_field_is_gone(tmp_path: Path):
+    _write(tmp_path / "n.md", "- [ ] Task #context/pc\n")
+
+    result = collect_all_tasks(str(tmp_path), available_on=_TODAY)
+
+    assert "group" not in result["tasks"][0]
+
+
+def test_priority_tasks_sort_first_then_oldest(tmp_path: Path):
+    _write(
+        tmp_path / "n.md",
+        "- [ ] Old plain ➕2020-01-01\n- [ ] New priority 🔼 ➕2026-01-01\n",
+    )
+
+    result = collect_all_tasks(str(tmp_path), available_on=_TODAY)
+
+    assert [t["text"] for t in result["tasks"]] == ["New priority", "Old plain"]
