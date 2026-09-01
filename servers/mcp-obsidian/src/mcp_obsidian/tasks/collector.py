@@ -217,7 +217,7 @@ def collect_all_tasks(
                     "project_name": md_file.stem if _is_project else None,
                     "project_path": rel_path if _is_project else None,
                     "project_section": raw_task.section or None,
-                    "is_sequenced": _is_project,
+                    "project_task": _is_project,
                 }
             )
 

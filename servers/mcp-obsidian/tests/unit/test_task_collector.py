@@ -229,3 +229,48 @@ def test_audit_is_stable_across_context_filters(tmp_path: Path):
     by_phone = collect_all_tasks(str(tmp_path), context_tag="#context/phone", available_on=_TODAY)
 
     assert _audit(unfiltered) == _audit(by_pc) == _audit(by_phone) == {"empty"}
+
+
+# ---------------------------------------------------------------------------
+# task provenance (#83)
+# ---------------------------------------------------------------------------
+
+
+def test_project_task_flag_true_for_project_notes(tmp_path: Path):
+    _write(
+        tmp_path / "Projects" / "p.md",
+        "---\ntags: [project]\n---\n## Todo\n- [ ] In a project\n",
+    )
+
+    result = collect_all_tasks(str(tmp_path), available_on=_TODAY)
+
+    assert result["tasks"][0]["project_task"] is True
+
+
+def test_project_task_flag_false_for_other_notes(tmp_path: Path):
+    _write(tmp_path / "daily.md", "- [ ] Loose task\n")
+
+    result = collect_all_tasks(str(tmp_path), available_on=_TODAY)
+
+    assert result["tasks"][0]["project_task"] is False
+
+
+def test_project_task_flag_does_not_depend_on_sequencing(tmp_path: Path):
+    # The field says where the task came from, not whether sequencing ran.
+    _write(
+        tmp_path / "Projects" / "p.md",
+        "---\ntags: [project]\n---\n## Todo\n- [ ] First\n- [ ] Second\n",
+    )
+
+    result = collect_all_tasks(str(tmp_path), available_on=_TODAY, apply_sequencing=False)
+
+    assert len(result["tasks"]) == 2
+    assert all(t["project_task"] is True for t in result["tasks"])
+
+
+def test_is_sequenced_field_is_gone(tmp_path: Path):
+    _write(tmp_path / "daily.md", "- [ ] Loose task\n")
+
+    result = collect_all_tasks(str(tmp_path), available_on=_TODAY)
+
+    assert "is_sequenced" not in result["tasks"][0]
