@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -9,7 +9,7 @@ from mcp_obsidian.tasks.parser import (
     PRIORITY_MARKER,
     RawTask,
     collect_tasks_from_file,
-    is_future_scheduled,
+    is_available,
 )
 from mcp_obsidian.vault.frontmatter import extract_tags
 from mcp_obsidian.vault.frontmatter import parse as parse_fm
@@ -61,13 +61,17 @@ def process_project_note(
     rel_path: str,
     page_fm: dict[str, Any],
     page_ctime: float,
-    hide_future_scheduled: bool = True,
     apply_sequencing: bool = True,
 ) -> tuple[list[RawTask], bool]:
+    """Return the project's candidate tasks and whether it has a next action at all.
+
+    Availability is deliberately NOT applied here. Sequencing must pick the first
+    open task of each section first; filtering beforehand would step over a
+    deferred next action and promote the task behind it, which under strict
+    sequencing is work that cannot be done yet.
+    """
     all_tasks = collect_tasks_from_file(vault_root, rel_path, page_fm, page_ctime)
     open_tasks = [t for t in all_tasks if t.status == " "]
-    if hide_future_scheduled:
-        open_tasks = [t for t in open_tasks if not is_future_scheduled(t)]
     if not open_tasks:
         return [], False
     if apply_sequencing:
@@ -128,7 +132,7 @@ def collect_all_tasks(
     vault_root: str,
     context_tag: str | None = None,
     group_filter: str | None = None,
-    hide_future_scheduled: bool = True,
+    available_on: date | None = None,
     include_someday: bool = False,
     include_waiting: bool = True,
     project_tasks_only: bool = False,
@@ -168,7 +172,6 @@ def collect_all_tasks(
                 rel_path,
                 fm,
                 page_ctime,
-                hide_future_scheduled=hide_future_scheduled,
                 apply_sequencing=apply_sequencing,
             )
             if not has_na:
@@ -179,7 +182,10 @@ def collect_all_tasks(
             )
 
         for raw_task in raw_tasks:
-            if not _is_project and hide_future_scheduled and is_future_scheduled(raw_task):
+            # Applied after sequencing has chosen the next action, so an
+            # unavailable next action silences its section rather than promoting
+            # the task behind it.
+            if available_on is not None and not is_available(raw_task, available_on):
                 continue
 
             group = assign_group(raw_task, raw_task.page_tags)

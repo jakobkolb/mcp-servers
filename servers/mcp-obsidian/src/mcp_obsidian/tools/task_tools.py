@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
+from datetime import date
 from typing import Any, Literal
 
 from mcp.types import Tool
@@ -17,9 +18,11 @@ from mcp_obsidian.tasks.mutator import (
 
 
 class GetTasksInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     context_tag: str | None = None
     group: Literal["priority", "waiting", "normal", "notag", "someday"] | None = None
-    hide_future_scheduled: bool = True
+    available_on: date | None = None
     include_someday: bool = False
     include_waiting: bool = True
     project_tasks_only: bool = False
@@ -80,7 +83,17 @@ def get_tools() -> list[Tool]:
                         "description": "Filter to a specific group.",
                         "default": None,
                     },
-                    "hide_future_scheduled": {"type": "boolean", "default": True},
+                    "available_on": {
+                        # null is meaningful here: it disables the availability test.
+                        "type": ["string", "null"],
+                        "description": (
+                            "YYYY-MM-DD. Only return tasks actionable on this date; "
+                            "a task deferred with ⏳ to a later date is not, and in a "
+                            "project section silences that section entirely. Omit for "
+                            "today. Pass null to ignore availability."
+                        ),
+                        "default": None,
+                    },
                     "include_someday": {"type": "boolean", "default": False},
                     "include_waiting": {"type": "boolean", "default": True},
                     "project_tasks_only": {"type": "boolean", "default": False},
@@ -185,12 +198,16 @@ def get_tools() -> list[Tool]:
 def get_handlers(config: Config) -> dict[str, Callable[..., Any]]:
     async def handle_get_tasks(arguments: dict[str, Any]) -> dict[str, Any]:
         args = GetTasksInput(**arguments)
+        # Omitted means today; an explicit null disables the availability test.
+        available_on = (
+            args.available_on if "available_on" in args.model_fields_set else date.today()
+        )
         return await asyncio.to_thread(
             collect_all_tasks,
             config.vault_path,
             args.context_tag,
             args.group,
-            args.hide_future_scheduled,
+            available_on,
             args.include_someday,
             args.include_waiting,
             args.project_tasks_only,

@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+from datetime import date
 from pathlib import Path
 
 from mcp_obsidian.tasks.parser import (
     collect_tasks_from_file,
     extract_tags,
-    is_future_scheduled,
+    is_available,
     parse_task_line,
 )
 
@@ -185,23 +186,38 @@ def test_extract_tags_empty():
 
 
 # ---------------------------------------------------------------------------
-# is_future_scheduled
+# is_available
 # ---------------------------------------------------------------------------
 
 
-def test_is_future_scheduled_true_for_future_date():
+_ON = date(2026, 6, 15)
+
+
+def test_is_available_false_for_future_date():
     task = parse_task_line("- [ ] Thing ⏳2099-01-01", "note.md", 1)
     assert task is not None
-    assert is_future_scheduled(task) is True
+    assert is_available(task, _ON) is False
 
 
-def test_is_future_scheduled_false_for_past_date():
+def test_is_available_true_for_past_date():
     task = parse_task_line("- [ ] Thing ⏳2020-01-01", "note.md", 1)
     assert task is not None
-    assert is_future_scheduled(task) is False
+    assert is_available(task, _ON) is True
 
 
-def test_is_future_scheduled_false_when_no_date():
+def test_is_available_true_when_no_date():
     task = parse_task_line("- [ ] No date", "note.md", 1)
     assert task is not None
-    assert is_future_scheduled(task) is False
+    assert is_available(task, _ON) is True
+
+
+def test_is_available_true_on_the_scheduled_date_itself():
+    task = parse_task_line("- [ ] Thing ⏳2026-06-15", "note.md", 1)
+    assert task is not None
+    assert is_available(task, _ON) is True
+
+
+def test_is_available_ignores_start_date():
+    task = parse_task_line("- [ ] Thing 🛫2099-01-01", "note.md", 1)
+    assert task is not None
+    assert is_available(task, _ON) is True
