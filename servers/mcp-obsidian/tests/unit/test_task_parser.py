@@ -20,7 +20,7 @@ def test_parse_simple_open_task():
     assert task.status == " "
     assert task.text == "Buy milk"
     assert task.tags == []
-    assert task.priority == ""
+    assert task.priority is False
 
 
 def test_parse_completed_task_returns_none_status():
@@ -60,16 +60,27 @@ def test_parse_extracts_created_date():
     assert task.created_date == "2026-05-01"
 
 
-def test_parse_extracts_priority_highest():
-    task = parse_task_line("- [ ] Urgent task 🔺", "note.md", 1)
+def test_parse_marker_sets_priority_true():
+    task = parse_task_line("- [ ] Urgent task 🔼", "note.md", 1)
     assert task is not None
-    assert task.priority == "highest"
+    assert task.priority is True
+    assert "🔼" not in task.text
 
 
-def test_parse_extracts_priority_medium():
-    task = parse_task_line("- [ ] Medium task 🔼", "note.md", 1)
+def test_parse_other_priority_emoji_are_plain_text():
+    # 🔼 is the only priority marker. Everything else the Tasks plugin defines
+    # carries no meaning here and stays in the text like any other character.
+    for emoji in ("🔺", "⏫", "🔽", "⏬"):
+        task = parse_task_line(f"- [ ] Task {emoji}", "note.md", 1)
+        assert task is not None, emoji
+        assert task.priority is False, emoji
+        assert emoji in task.text, emoji
+
+
+def test_parse_no_marker_sets_priority_false():
+    task = parse_task_line("- [ ] Plain task", "note.md", 1)
     assert task is not None
-    assert task.priority == "medium"
+    assert task.priority is False
 
 
 def test_parse_strips_emoji_metadata_from_text():
@@ -85,10 +96,12 @@ def test_parse_strips_emoji_metadata_from_text():
     assert "Buy groceries" in task.text
 
 
-def test_parse_strips_priority_emoji_from_text():
-    task = parse_task_line("- [ ] Urgent task 🔺 do this now", "note.md", 1)
+def test_parse_strips_priority_marker_from_text():
+    task = parse_task_line("- [ ] Urgent task 🔼 do this now", "note.md", 1)
     assert task is not None
-    assert "🔺" not in task.text
+    assert "🔼" not in task.text
+    assert task.text.startswith("Urgent task")
+    assert task.text.endswith("do this now")
 
 
 def test_parse_sets_path_and_line():

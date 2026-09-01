@@ -5,6 +5,7 @@ from datetime import date
 from typing import Any
 
 from mcp_obsidian.errors import TaskStateError
+from mcp_obsidian.tasks.parser import PRIORITY_MARKER
 from mcp_obsidian.vault.io import atomic_write, patch_line
 from mcp_obsidian.vault.path import resolve
 
@@ -20,15 +21,6 @@ DATE_PATTERN: dict[str, re.Pattern[str]] = {
     "scheduled": re.compile(r"⏳\s?(\d{4}-\d{2}-\d{2})"),
     "start": re.compile(r"🛫\s?(\d{4}-\d{2}-\d{2})"),
     "created": re.compile(r"➕\s?(\d{4}-\d{2}-\d{2})"),
-}
-
-PRIORITY_EMOJI = {
-    "highest": "🔺",
-    "high": "⏫",
-    "medium": "🔼",
-    "low": "🔽",
-    "lowest": "⏬",
-    "": "",
 }
 
 
@@ -123,7 +115,7 @@ def add_task_to_file(
     scheduled_date: str | None,
     due_date: str | None,
     start_date: str | None,
-    priority: str,
+    priority: bool,
     stamp_created: bool,
     append_under_heading: str | None,
 ) -> dict[str, Any]:
@@ -158,14 +150,14 @@ def _build_task_line(
     scheduled_date: str | None,
     due_date: str | None,
     start_date: str | None,
-    priority: str,
+    priority: bool,
     stamp_created: bool,
 ) -> str:
     parts = [f"- [ ] {text}"]
     if tags:
         parts.append(" ".join(tags))
     if priority:
-        parts.append(PRIORITY_EMOJI[priority])
+        parts.append(PRIORITY_MARKER)
     if stamp_created:
         parts.append(f"➕{date.today().isoformat()}")
     if scheduled_date:

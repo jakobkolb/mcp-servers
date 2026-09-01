@@ -6,6 +6,7 @@ from typing import Any
 
 from mcp_obsidian.tasks.parser import (
     GLOBAL_EXCLUDE,
+    PRIORITY_MARKER,
     RawTask,
     collect_tasks_from_file,
     is_future_scheduled,
@@ -97,10 +98,9 @@ def assign_group(task: RawTask, page_tags: list[str]) -> str:
         return "someday"
     if "#waiting-on" in task.tags:
         return "waiting"
-    # Priority if the task carries a priority emoji, OR if it belongs to a project
-    # note that is itself tagged with a priority emoji in its frontmatter — tasks
-    # inherit their project's priority.
-    if "🔼" in task.raw_line or "#🔼" in page_tags:
+    # Priority if the task carries the marker, OR if it belongs to a project note
+    # whose frontmatter carries it — tasks inherit their project's priority.
+    if task.priority or f"#{PRIORITY_MARKER}" in page_tags:
         return "priority"
     if len(task.tags) == 0:
         return "notag"

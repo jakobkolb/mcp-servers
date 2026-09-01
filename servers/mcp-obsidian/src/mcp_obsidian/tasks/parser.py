@@ -34,13 +34,10 @@ DATE_RE: dict[str, re.Pattern[str]] = {
 
 RECURRENCE_RE = re.compile(r"🔁\s?([^📅⏳🛫➕✅🔁\n]+)")
 
-PRIORITY_MAP = [
-    ("🔺", "highest"),
-    ("⏫", "high"),
-    ("🔼", "medium"),
-    ("🔽", "low"),
-    ("⏬", "lowest"),
-]
+# 🔼 is the only priority marker. Priority is binary: a task either carries it or
+# does not. Other emoji the Obsidian Tasks plugin defines (🔺 ⏫ 🔽 ⏬) carry no
+# meaning here and are left in the task text like any other character.
+PRIORITY_MARKER = "🔼"
 
 
 @dataclass
@@ -51,7 +48,7 @@ class RawTask:
     status: str
     text: str
     tags: list[str]
-    priority: str
+    priority: bool
     due_date: str | None
     scheduled_date: str | None
     start_date: str | None
@@ -80,11 +77,7 @@ def parse_task_line(line: str, path: str, lineno: int) -> RawTask | None:
     rm = RECURRENCE_RE.search(raw_text)
     recurrence = rm.group(1).strip() if rm else ""
 
-    priority = ""
-    for emoji, level in PRIORITY_MAP:
-        if emoji in raw_text:
-            priority = level
-            break
+    priority = PRIORITY_MARKER in raw_text
 
     tags = [f"#{t}" for t in INLINE_TAG_RE.findall(raw_text)]
 
@@ -92,8 +85,7 @@ def parse_task_line(line: str, path: str, lineno: int) -> RawTask | None:
     for pattern in DATE_RE.values():
         clean_text = pattern.sub("", clean_text)
     clean_text = RECURRENCE_RE.sub("", clean_text)
-    for emoji, _ in PRIORITY_MAP:
-        clean_text = clean_text.replace(emoji, "")
+    clean_text = clean_text.replace(PRIORITY_MARKER, "")
     clean_text = clean_text.strip()
 
     return RawTask(

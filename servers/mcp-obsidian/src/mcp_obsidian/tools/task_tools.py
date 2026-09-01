@@ -48,7 +48,7 @@ class AddTaskInput(BaseModel):
     scheduled_date: str | None = None
     due_date: str | None = None
     start_date: str | None = None
-    priority: Literal["highest", "high", "medium", "low", "lowest", ""] = ""
+    priority: bool = False
     stamp_created: bool = True
     append_under_heading: str | None = None
 
@@ -154,9 +154,9 @@ def get_tools() -> list[Tool]:
                     "due_date": {"type": "string", "default": None},
                     "start_date": {"type": "string", "default": None},
                     "priority": {
-                        "type": "string",
-                        "enum": ["highest", "high", "medium", "low", "lowest", ""],
-                        "default": "",
+                        "type": "boolean",
+                        "description": "Mark the task as priority (writes 🔼).",
+                        "default": False,
                     },
                     "stamp_created": {"type": "boolean", "default": True},
                     "append_under_heading": {

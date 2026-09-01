@@ -18,42 +18,42 @@ from mcp_obsidian.tasks.mutator import (
 
 
 def test_build_task_line_minimal():
-    line = _build_task_line("Buy milk", [], None, None, None, "", False)
+    line = _build_task_line("Buy milk", [], None, None, None, False, False)
     assert line == "- [ ] Buy milk"
 
 
 def test_build_task_line_with_tags():
-    line = _build_task_line("Call doctor", ["#context/phone"], None, None, None, "", False)
+    line = _build_task_line("Call doctor", ["#context/phone"], None, None, None, False, False)
     assert "#context/phone" in line
 
 
 def test_build_task_line_with_priority():
-    line = _build_task_line("Urgent", [], None, None, None, "highest", False)
-    assert "🔺" in line
+    line = _build_task_line("Urgent", [], None, None, None, True, False)
+    assert "🔼" in line
 
 
 def test_build_task_line_with_stamp_created():
-    line = _build_task_line("Task", [], None, None, None, "", True)
+    line = _build_task_line("Task", [], None, None, None, False, True)
     assert "➕" in line
 
 
 def test_build_task_line_with_scheduled():
-    line = _build_task_line("Review PR", [], "2026-06-01", None, None, "", False)
+    line = _build_task_line("Review PR", [], "2026-06-01", None, None, False, False)
     assert "⏳2026-06-01" in line
 
 
 def test_build_task_line_with_due():
-    line = _build_task_line("Submit", [], None, "2026-06-15", None, "", False)
+    line = _build_task_line("Submit", [], None, "2026-06-15", None, False, False)
     assert "📅2026-06-15" in line
 
 
 def test_build_task_line_full():
     line = _build_task_line(
-        "Complex task", ["#context/pc"], "2026-06-01", "2026-06-15", None, "high", True
+        "Complex task", ["#context/pc"], "2026-06-01", "2026-06-15", None, True, True
     )
     assert line.startswith("- [ ] Complex task")
     assert "#context/pc" in line
-    assert "⏫" in line
+    assert "🔼" in line
     assert "➕" in line
     assert "⏳2026-06-01" in line
     assert "📅2026-06-15" in line
@@ -261,3 +261,23 @@ def test_find_insert_position_after_last_task_under_heading():
     ]
     pos = _find_insert_position(lines, "Todo")
     assert pos == 3  # after "- [ ] Second"
+
+
+def test_build_task_line_priority_true_writes_marker():
+    line = _build_task_line("Task", [], None, None, None, True, False)
+    assert "🔼" in line
+
+
+def test_build_task_line_priority_false_writes_no_marker():
+    line = _build_task_line("Task", [], None, None, None, False, False)
+    for emoji in ("🔼", "🔺", "⏫", "🔽", "⏬"):
+        assert emoji not in line
+
+
+def test_priority_round_trips_through_parser():
+    from mcp_obsidian.tasks.parser import parse_task_line
+
+    line = _build_task_line("Task", [], None, None, None, True, False)
+    task = parse_task_line(line, "note.md", 1)
+    assert task is not None
+    assert task.priority is True
