@@ -173,14 +173,12 @@ class TestContextTagRename:
     """Rename #context/kids → #context/children across all task files."""
 
     def test_finds_kids_tasks_before_rename(self, mcp_client: StdioMCPClient):
-        resp = mcp_client.call_tool("get_tasks", {"context_tag": "#context/kids"})
+        resp = mcp_client.call_tool("get_tasks", {"tags": ["#context/kids"]})
         data = tool_payload(resp)
         assert data["total_tasks"] > 0, "Expected at least one #context/kids task before rename"
 
     def test_rename_tag_via_patch_note(self, mcp_client: StdioMCPClient, task_vault: Path):
-        resp = mcp_client.call_tool(
-            "get_tasks", {"context_tag": "#context/kids", "include_someday": True}
-        )
+        resp = mcp_client.call_tool("get_tasks", {"tags": ["#context/kids"]})
         data = tool_payload(resp)
 
         affected_paths: set[str] = {task["path"] for task in data["tasks"]}
@@ -202,18 +200,14 @@ class TestContextTagRename:
             )
 
     def test_no_kids_tasks_after_rename(self, mcp_client: StdioMCPClient):
-        resp = mcp_client.call_tool(
-            "get_tasks", {"context_tag": "#context/kids", "include_someday": True}
-        )
+        resp = mcp_client.call_tool("get_tasks", {"tags": ["#context/kids"]})
         data = tool_payload(resp)
         assert data["total_tasks"] == 0, (
             f"Expected 0 #context/kids tasks after rename, got {data['total_tasks']}"
         )
 
     def test_children_tasks_exist_after_rename(self, mcp_client: StdioMCPClient):
-        resp = mcp_client.call_tool(
-            "get_tasks", {"context_tag": "#context/children", "include_someday": True}
-        )
+        resp = mcp_client.call_tool("get_tasks", {"tags": ["#context/children"]})
         data = tool_payload(resp)
         assert data["total_tasks"] > 0, "Expected #context/children tasks to exist after rename"
 
@@ -236,7 +230,7 @@ class TestCompleteTaskWorkflow:
     """Complete a #context/phone task and verify it disappears from open tasks."""
 
     def test_complete_phone_task(self, mcp_client: StdioMCPClient, task_vault: Path):
-        resp = mcp_client.call_tool("get_tasks", {"context_tag": "#context/phone"})
+        resp = mcp_client.call_tool("get_tasks", {"tags": ["#context/phone"]})
         data = tool_payload(resp)
         assert data["total_tasks"] >= 1, "Need at least one #context/phone task"
 
@@ -254,7 +248,7 @@ class TestCompleteTaskWorkflow:
         ]
 
     def test_phone_task_gone_from_open_tasks(self, mcp_client: StdioMCPClient):
-        resp = mcp_client.call_tool("get_tasks", {"context_tag": "#context/phone"})
+        resp = mcp_client.call_tool("get_tasks", {"tags": ["#context/phone"]})
         data = tool_payload(resp)
         assert data["total_tasks"] == 0, "Phone task should be gone after completion"
 
@@ -276,7 +270,7 @@ class TestDeferTaskWorkflow:
     def test_pc_task_visible_before_defer(self, mcp_client: StdioMCPClient):
         resp = mcp_client.call_tool(
             "get_tasks",
-            {"context_tag": "#context/pc", "available_on": None},
+            {"tags": ["#context/pc"], "available_on": None},
         )
         data = tool_payload(resp)
         assert data["total_tasks"] >= 1, "Need at least one #context/pc task"
@@ -284,7 +278,7 @@ class TestDeferTaskWorkflow:
     def test_defer_pc_task_to_future(self, mcp_client: StdioMCPClient):
         resp = mcp_client.call_tool(
             "get_tasks",
-            {"context_tag": "#context/pc", "available_on": None},
+            {"tags": ["#context/pc"], "available_on": None},
         )
         data = tool_payload(resp)
 
@@ -308,7 +302,7 @@ class TestDeferTaskWorkflow:
     def test_deferred_task_hidden_with_flag(self, mcp_client: StdioMCPClient):
         resp = mcp_client.call_tool(
             "get_tasks",
-            {"context_tag": "#context/pc"},
+            {"tags": ["#context/pc"]},
         )
         data = tool_payload(resp)
 
@@ -323,7 +317,7 @@ class TestDeferTaskWorkflow:
     def test_deferred_task_visible_without_flag(self, mcp_client: StdioMCPClient):
         resp = mcp_client.call_tool(
             "get_tasks",
-            {"context_tag": "#context/pc", "available_on": None},
+            {"tags": ["#context/pc"], "available_on": None},
         )
         data = tool_payload(resp)
 
@@ -401,7 +395,7 @@ class TestAddTaskWorkflow:
         assert not resp["result"].get("isError"), resp["result"]["content"][0]["text"]
 
     def test_added_task_appears_in_get_tasks(self, mcp_client: StdioMCPClient):
-        resp = mcp_client.call_tool("get_tasks", {"context_tag": "#context/test"})
+        resp = mcp_client.call_tool("get_tasks", {"tags": ["#context/test"]})
         data = tool_payload(resp)
 
         found = any(self._TASK_TEXT in t["text"] for t in data["tasks"])

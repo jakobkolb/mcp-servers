@@ -14,8 +14,6 @@ from mcp_obsidian.tasks.parser import (
 from mcp_obsidian.vault.frontmatter import extract_tags
 from mcp_obsidian.vault.frontmatter import parse as parse_fm
 
-GROUP_ORDER = {"waiting": 0, "priority": 1, "normal": 2, "notag": 3, "someday": 4}
-
 
 def is_project_note(fm: dict[str, Any]) -> bool:
     tags = extract_tags(fm)
@@ -97,18 +95,16 @@ def process_non_project_note(
     ]
 
 
-def assign_group(task: RawTask, page_tags: list[str]) -> str:
-    if "#someday" in task.tags:
-        return "someday"
-    if "#waiting-on" in task.tags:
-        return "waiting"
-    # Priority if the task carries the marker, OR if it belongs to a project note
-    # whose frontmatter carries it — tasks inherit their project's priority.
-    if task.priority or f"#{PRIORITY_MARKER}" in page_tags:
-        return "priority"
-    if len(task.tags) == 0:
-        return "notag"
-    return "normal"
+def resolve_priority(task: RawTask) -> bool:
+    """Whether the task is priority, from its own marker or inherited.
+
+    A task in a project note whose frontmatter carries the marker is a priority
+    task even without one of its own. Priority is a facet orthogonal to the
+    task's tags, not a bucket competing with them: a task can be priority and
+    #waiting-on and #context/phone at once, and a query for any of the three
+    must return it.
+    """
+    return task.priority or f"#{PRIORITY_MARKER}" in task.page_tags
 
 
 def resolve_sort_date(task: RawTask, page_fm: dict[str, Any], page_ctime: float) -> int:
@@ -130,11 +126,11 @@ def resolve_sort_date(task: RawTask, page_fm: dict[str, Any], page_ctime: float)
 
 def collect_all_tasks(
     vault_root: str,
-    context_tag: str | None = None,
-    group_filter: str | None = None,
+    tags: list[str] | None = None,
+    exclude_tags: list[str] | None = None,
+    priority: bool | None = None,
+    untagged: bool | None = None,
     available_on: date | None = None,
-    include_someday: bool = False,
-    include_waiting: bool = True,
     project_tasks_only: bool = False,
     exclude_projects: bool = False,
     apply_sequencing: bool = True,
@@ -188,15 +184,17 @@ def collect_all_tasks(
             if available_on is not None and not is_available(raw_task, available_on):
                 continue
 
-            group = assign_group(raw_task, raw_task.page_tags)
+            task_priority = resolve_priority(raw_task)
 
-            if group_filter and group != group_filter:
+            # Facets are independent membership tests that AND together; a task
+            # belongs to every one that applies to it, not to a single bucket.
+            if priority is not None and task_priority != priority:
                 continue
-            if not include_someday and group == "someday":
+            if tags and not all(t in raw_task.tags for t in tags):
                 continue
-            if not include_waiting and group == "waiting":
+            if exclude_tags and any(t in raw_task.tags for t in exclude_tags):
                 continue
-            if context_tag and context_tag not in raw_task.tags:
+            if untagged is not None and (len(raw_task.tags) == 0) != untagged:
                 continue
 
             sort_date = resolve_sort_date(raw_task, fm, page_ctime)
@@ -210,9 +208,8 @@ def collect_all_tasks(
                     "tags": raw_task.tags,
                     "scheduled_date": raw_task.scheduled_date,
                     "created_date": raw_task.created_date,
-                    "priority": raw_task.priority,
+                    "priority": task_priority,
                     "recurrence": raw_task.recurrence,
-                    "group": group,
                     "sort_date_ms": sort_date,
                     "project_name": md_file.stem if _is_project else None,
                     "project_path": rel_path if _is_project else None,
@@ -221,7 +218,8 @@ def collect_all_tasks(
                 }
             )
 
-    tasks.sort(key=lambda t: (GROUP_ORDER.get(t["group"], 99), t["sort_date_ms"]))
+    # Priority first, then oldest first within each.
+    tasks.sort(key=lambda t: (not t["priority"], t["sort_date_ms"]))
 
     return {
         "tasks": tasks,
