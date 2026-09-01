@@ -174,3 +174,58 @@ def test_available_on_in_the_future_reveals_deferred_work(tmp_path: Path):
 
     assert result["total_tasks"] == 1
     assert result["tasks"][0]["text"] == "Deferred next action"
+
+
+# ---------------------------------------------------------------------------
+# stalled-project audit (#81)
+# ---------------------------------------------------------------------------
+
+
+def _audit(result: dict) -> set[str]:
+    return {p["name"] for p in result["projects_without_next_action"]}
+
+
+def test_project_with_only_a_deferred_next_action_is_not_stalled(tmp_path: Path):
+    # It has a next action; it just is not available yet. "No next action defined"
+    # and "nothing to do right now" are different questions.
+    _write(tmp_path / "Projects" / "deferred.md", _DEFERRED_FIRST)
+
+    result = collect_all_tasks(str(tmp_path), available_on=_TODAY)
+
+    assert result["total_tasks"] == 0
+    assert _audit(result) == set()
+
+
+def test_project_with_no_open_tasks_is_stalled(tmp_path: Path):
+    _write(tmp_path / "Projects" / "empty.md", "---\ntags: [project]\n---\n## Todo\n")
+
+    result = collect_all_tasks(str(tmp_path), available_on=_TODAY)
+
+    assert _audit(result) == {"empty"}
+
+
+def test_project_with_all_tasks_completed_is_stalled(tmp_path: Path):
+    _write(
+        tmp_path / "Projects" / "finished.md",
+        "---\ntags: [project]\n---\n## Todo\n- [x] Done ✅ 2026-01-01\n",
+    )
+
+    result = collect_all_tasks(str(tmp_path), available_on=_TODAY)
+
+    assert _audit(result) == {"finished"}
+
+
+def test_audit_is_stable_across_context_filters(tmp_path: Path):
+    # The audit answers a question about the vault, not about the caller's filter.
+    # Asking "what can I do at the PC" must not change which projects are stalled.
+    _write(
+        tmp_path / "Projects" / "live.md",
+        "---\ntags: [project]\n---\n## Todo\n- [ ] Phone thing #context/phone\n",
+    )
+    _write(tmp_path / "Projects" / "empty.md", "---\ntags: [project]\n---\n## Todo\n")
+
+    unfiltered = collect_all_tasks(str(tmp_path), available_on=_TODAY)
+    by_pc = collect_all_tasks(str(tmp_path), context_tag="#context/pc", available_on=_TODAY)
+    by_phone = collect_all_tasks(str(tmp_path), context_tag="#context/phone", available_on=_TODAY)
+
+    assert _audit(unfiltered) == _audit(by_pc) == _audit(by_phone) == {"empty"}
