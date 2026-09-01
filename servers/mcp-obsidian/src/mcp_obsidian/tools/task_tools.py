@@ -5,7 +5,7 @@ from collections.abc import Callable
 from typing import Any, Literal
 
 from mcp.types import Tool
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from mcp_obsidian.config import Config
 from mcp_obsidian.tasks.collector import collect_all_tasks
@@ -35,19 +35,23 @@ class CompleteTaskInput(BaseModel):
 
 
 class SetTaskDateInput(BaseModel):
+    # Unknown keys are rejected rather than ignored: silently dropping a date a
+    # caller asked for would lose it with no signal.
+    model_config = ConfigDict(extra="forbid")
+
     path: str
     line: int
-    date_type: Literal["due", "scheduled", "start", "created"]
+    date_type: Literal["scheduled", "created"]
     date: str | None = None
 
 
 class AddTaskInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     path: str
     text: str
     tags: list[str] = []
     scheduled_date: str | None = None
-    due_date: str | None = None
-    start_date: str | None = None
     priority: bool = False
     stamp_created: bool = True
     append_under_heading: str | None = None
@@ -127,7 +131,7 @@ def get_tools() -> list[Tool]:
                     "line": {"type": "integer"},
                     "date_type": {
                         "type": "string",
-                        "enum": ["due", "scheduled", "start", "created"],
+                        "enum": ["scheduled", "created"],
                     },
                     "date": {
                         "type": "string",
@@ -150,9 +154,16 @@ def get_tools() -> list[Tool]:
                         "description": "Task description (no emoji needed).",
                     },
                     "tags": {"type": "array", "items": {"type": "string"}, "default": []},
-                    "scheduled_date": {"type": "string", "default": None},
-                    "due_date": {"type": "string", "default": None},
-                    "start_date": {"type": "string", "default": None},
+                    "scheduled_date": {
+                        "type": "string",
+                        "description": (
+                            "YYYY-MM-DD. Defer the task until this date: it is not "
+                            "actionable before then and will not appear in task "
+                            "queries until it arrives. Not a deadline -- a real "
+                            "deadline belongs in the calendar, not here."
+                        ),
+                        "default": None,
+                    },
                     "priority": {
                         "type": "boolean",
                         "description": "Mark the task as priority (writes 🔼).",
@@ -214,8 +225,6 @@ def get_handlers(config: Config) -> dict[str, Callable[..., Any]]:
             args.text,
             args.tags,
             args.scheduled_date,
-            args.due_date,
-            args.start_date,
             args.priority,
             args.stamp_created,
             args.append_under_heading,

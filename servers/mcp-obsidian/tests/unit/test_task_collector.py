@@ -54,3 +54,24 @@ def test_collect_all_tasks_path_filter_none_returns_all(tmp_path: Path):
     result = collect_all_tasks(str(tmp_path), path=None)
 
     assert result["total_tasks"] == 2
+
+
+def test_response_omits_unused_date_fields(tmp_path: Path):
+    # 📅 and 🛫 drive nothing. raw_line still carries them verbatim, so no
+    # information about historical tasks is lost by dropping the parsed fields.
+    _write(tmp_path / "n.md", "- [ ] Old task 📅 2024-01-18 🛫 2024-01-01\n")
+
+    result = collect_all_tasks(str(tmp_path))
+
+    task = result["tasks"][0]
+    assert "due_date" not in task
+    assert "start_date" not in task
+    assert "📅 2024-01-18" in task["raw_line"]
+
+
+def test_unused_date_markers_are_still_stripped_from_text(tmp_path: Path):
+    _write(tmp_path / "n.md", "- [ ] Old task 📅 2024-01-18\n")
+
+    result = collect_all_tasks(str(tmp_path))
+
+    assert "📅" not in result["tasks"][0]["text"]
