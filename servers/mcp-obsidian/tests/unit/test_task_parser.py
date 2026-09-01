@@ -42,6 +42,29 @@ def test_parse_extracts_tags():
     assert "#waiting-on" in task.tags
 
 
+def test_parse_ignores_trailing_slash_in_tag():
+    # "#context/*-Tags" is prose about a tag pattern, not a tag. The match must
+    # stop before the trailing separator rather than yielding "#context/".
+    task = parse_task_line("- [ ] Liste der #context/*-Tags ergänzen #context/pc", "note.md", 1)
+    assert task is not None
+    assert "#context/" not in task.tags
+    assert "#context/pc" in task.tags
+
+
+def test_parse_ignores_trailing_hyphen_in_tag():
+    task = parse_task_line("- [ ] Rename #waiting- to something", "note.md", 1)
+    assert task is not None
+    assert "#waiting-" not in task.tags
+
+
+def test_parse_keeps_nested_and_hyphenated_tags_whole():
+    task = parse_task_line("- [ ] Thing #a/b/c #waiting-on #kontext/büro", "note.md", 1)
+    assert task is not None
+    assert "#a/b/c" in task.tags
+    assert "#waiting-on" in task.tags
+    assert "#kontext/büro" in task.tags
+
+
 def test_parse_extracts_due_date():
     task = parse_task_line("- [ ] Submit report 📅2026-06-30", "note.md", 1)
     assert task is not None
