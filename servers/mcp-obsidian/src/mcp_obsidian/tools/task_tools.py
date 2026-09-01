@@ -123,7 +123,10 @@ def get_tools() -> list[Tool]:
         ),
         Tool(
             name="set_task_date",
-            description="Set, update, or remove a date emoji field (⏳📅🛫➕) on a task line.",
+            description=(
+                "Set, update, or remove a date on a task line. Only the two markers "
+                "this workflow writes are settable: ⏳ (scheduled) and ➕ (created)."
+            ),
             inputSchema={
                 "type": "object",
                 "properties": {
