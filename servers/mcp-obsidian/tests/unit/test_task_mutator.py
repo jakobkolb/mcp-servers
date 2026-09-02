@@ -11,6 +11,9 @@ from mcp_obsidian.tasks.mutator import (
     complete_task_in_file,
     set_task_date_in_file,
 )
+from mcp_obsidian.tasks.parser import parse_task_line
+from mcp_obsidian.tools.task_tools import AddTaskInput, SetTaskDateInput
+from pydantic import ValidationError
 
 # ---------------------------------------------------------------------------
 # _build_task_line
@@ -18,45 +21,37 @@ from mcp_obsidian.tasks.mutator import (
 
 
 def test_build_task_line_minimal():
-    line = _build_task_line("Buy milk", [], None, None, None, "", False)
+    line = _build_task_line("Buy milk", [], None, False, False)
     assert line == "- [ ] Buy milk"
 
 
 def test_build_task_line_with_tags():
-    line = _build_task_line("Call doctor", ["#context/phone"], None, None, None, "", False)
+    line = _build_task_line("Call doctor", ["#context/phone"], None, False, False)
     assert "#context/phone" in line
 
 
 def test_build_task_line_with_priority():
-    line = _build_task_line("Urgent", [], None, None, None, "highest", False)
-    assert "🔺" in line
+    line = _build_task_line("Urgent", [], None, True, False)
+    assert "🔼" in line
 
 
 def test_build_task_line_with_stamp_created():
-    line = _build_task_line("Task", [], None, None, None, "", True)
+    line = _build_task_line("Task", [], None, False, True)
     assert "➕" in line
 
 
 def test_build_task_line_with_scheduled():
-    line = _build_task_line("Review PR", [], "2026-06-01", None, None, "", False)
+    line = _build_task_line("Review PR", [], "2026-06-01", False, False)
     assert "⏳2026-06-01" in line
-
-
-def test_build_task_line_with_due():
-    line = _build_task_line("Submit", [], None, "2026-06-15", None, "", False)
-    assert "📅2026-06-15" in line
 
 
 def test_build_task_line_full():
-    line = _build_task_line(
-        "Complex task", ["#context/pc"], "2026-06-01", "2026-06-15", None, "high", True
-    )
+    line = _build_task_line("Complex task", ["#context/pc"], "2026-06-01", True, True)
     assert line.startswith("- [ ] Complex task")
     assert "#context/pc" in line
-    assert "⏫" in line
+    assert "🔼" in line
     assert "➕" in line
     assert "⏳2026-06-01" in line
-    assert "📅2026-06-15" in line
 
 
 # ---------------------------------------------------------------------------
@@ -171,7 +166,7 @@ def test_set_task_date_raises_out_of_range(tmp_path: Path):
     note.write_text("- [ ] Task\n", encoding="utf-8")
 
     with pytest.raises(TaskStateError):
-        set_task_date_in_file(str(tmp_path), "note.md", 99, "due", "2026-06-01")
+        set_task_date_in_file(str(tmp_path), "note.md", 99, "scheduled", "2026-06-01")
 
 
 # ---------------------------------------------------------------------------
@@ -180,9 +175,7 @@ def test_set_task_date_raises_out_of_range(tmp_path: Path):
 
 
 def test_add_task_creates_file_when_missing(tmp_path: Path):
-    result = add_task_to_file(
-        str(tmp_path), "new.md", "Buy milk", [], None, None, None, "", False, None
-    )
+    result = add_task_to_file(str(tmp_path), "new.md", "Buy milk", [], None, False, False, None)
 
     assert result["created"] is True
     assert result["line"] == 1
@@ -193,9 +186,7 @@ def test_add_task_appends_to_existing_file(tmp_path: Path):
     note = tmp_path / "note.md"
     note.write_text("# Notes\n\nExisting content\n", encoding="utf-8")
 
-    result = add_task_to_file(
-        str(tmp_path), "note.md", "New task", [], None, None, None, "", False, None
-    )
+    result = add_task_to_file(str(tmp_path), "note.md", "New task", [], None, False, False, None)
 
     assert result["created"] is False
     content = note.read_text(encoding="utf-8")
@@ -206,7 +197,7 @@ def test_add_task_inserts_under_heading(tmp_path: Path):
     note = tmp_path / "note.md"
     note.write_text("## Todo\n- [ ] Existing task\n## Done\n", encoding="utf-8")
 
-    add_task_to_file(str(tmp_path), "note.md", "New task", [], None, None, None, "", False, "Todo")
+    add_task_to_file(str(tmp_path), "note.md", "New task", [], None, False, False, "Todo")
 
     lines = note.read_text(encoding="utf-8").splitlines()
     todo_idx = lines.index("## Todo")
@@ -222,7 +213,7 @@ def test_add_task_appends_to_end_when_heading_missing(tmp_path: Path):
     note.write_text("Some content\n", encoding="utf-8")
 
     add_task_to_file(
-        str(tmp_path), "note.md", "Task", [], None, None, None, "", False, "Nonexistent Heading"
+        str(tmp_path), "note.md", "Task", [], None, False, False, "Nonexistent Heading"
     )
 
     content = note.read_text(encoding="utf-8")
@@ -233,7 +224,7 @@ def test_add_task_starts_on_own_line_when_no_trailing_newline(tmp_path: Path):
     note = tmp_path / "note.md"
     note.write_bytes(b"- [ ] Existing task")  # intentionally no trailing newline
 
-    add_task_to_file(str(tmp_path), "note.md", "New task", [], None, None, None, "", False, None)
+    add_task_to_file(str(tmp_path), "note.md", "New task", [], None, False, False, None)
 
     lines = note.read_text(encoding="utf-8").splitlines()
     assert any(ln.strip() == "- [ ] Existing task" for ln in lines)
@@ -261,3 +252,50 @@ def test_find_insert_position_after_last_task_under_heading():
     ]
     pos = _find_insert_position(lines, "Todo")
     assert pos == 3  # after "- [ ] Second"
+
+
+def test_build_task_line_priority_true_writes_marker():
+    line = _build_task_line("Task", [], None, True, False)
+    assert "🔼" in line
+
+
+def test_build_task_line_priority_false_writes_no_marker():
+    line = _build_task_line("Task", [], None, False, False)
+    for emoji in ("🔼", "🔺", "⏫", "🔽", "⏬"):
+        assert emoji not in line
+
+
+def test_priority_round_trips_through_parser():
+
+    line = _build_task_line("Task", [], None, True, False)
+    task = parse_task_line(line, "note.md", 1)
+    assert task is not None
+    assert task.priority is True
+
+
+# ---------------------------------------------------------------------------
+# unused date fields (#86)
+# ---------------------------------------------------------------------------
+
+
+def test_add_task_input_rejects_due_date():
+    # A real deadline belongs in the calendar, not the vault. Accepting the
+    # parameter and silently dropping it would lose the deadline with no signal.
+    with pytest.raises(ValidationError):
+        AddTaskInput(path="n.md", text="t", due_date="2026-01-01")
+
+
+def test_add_task_input_rejects_start_date():
+    with pytest.raises(ValidationError):
+        AddTaskInput(path="n.md", text="t", start_date="2026-01-01")
+
+
+def test_set_task_date_input_rejects_due_and_start():
+    for date_type in ("due", "start"):
+        with pytest.raises(ValidationError):
+            SetTaskDateInput(path="n.md", line=1, date_type=date_type)
+
+
+def test_set_task_date_input_still_accepts_scheduled_and_created():
+    for date_type in ("scheduled", "created"):
+        assert SetTaskDateInput(path="n.md", line=1, date_type=date_type).date_type == date_type

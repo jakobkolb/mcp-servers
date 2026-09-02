@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
+from datetime import date
 from typing import Any, Literal
 
 from mcp.types import Tool
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from mcp_obsidian.config import Config
 from mcp_obsidian.tasks.collector import collect_all_tasks
@@ -17,11 +18,13 @@ from mcp_obsidian.tasks.mutator import (
 
 
 class GetTasksInput(BaseModel):
-    context_tag: str | None = None
-    group: Literal["priority", "waiting", "normal", "notag", "someday"] | None = None
-    hide_future_scheduled: bool = True
-    include_someday: bool = False
-    include_waiting: bool = True
+    model_config = ConfigDict(extra="forbid")
+
+    tags: list[str] | None = None
+    exclude_tags: list[str] | None = None
+    priority: bool | None = None
+    untagged: bool | None = None
+    available_on: date | None = None
     project_tasks_only: bool = False
     exclude_projects: bool = False
     apply_sequencing: bool = True
@@ -35,20 +38,24 @@ class CompleteTaskInput(BaseModel):
 
 
 class SetTaskDateInput(BaseModel):
+    # Unknown keys are rejected rather than ignored: silently dropping a date a
+    # caller asked for would lose it with no signal.
+    model_config = ConfigDict(extra="forbid")
+
     path: str
     line: int
-    date_type: Literal["due", "scheduled", "start", "created"]
+    date_type: Literal["scheduled", "created"]
     date: str | None = None
 
 
 class AddTaskInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     path: str
     text: str
     tags: list[str] = []
     scheduled_date: str | None = None
-    due_date: str | None = None
-    start_date: str | None = None
-    priority: Literal["highest", "high", "medium", "low", "lowest", ""] = ""
+    priority: bool = False
     stamp_created: bool = True
     append_under_heading: str | None = None
 
@@ -58,27 +65,56 @@ def get_tools() -> list[Tool]:
         Tool(
             name="get_tasks",
             description=(
-                "Collect and return all open tasks from the vault. "
-                "Applies project sequencing (first task per section), excludes Utility folder, "
-                "and groups tasks by priority/waiting/normal/notag/someday."
+                "Collect and return all open tasks from the vault. Applies project "
+                "sequencing (exactly one available next action per heading in a "
+                "#project note), excludes the Utility folder, and returns a flat list "
+                "where each task carries its facets: a priority flag and its tags."
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "context_tag": {
-                        "type": "string",
-                        "description": "Filter to tasks with this tag, e.g. '#context/pc'.",
+                    "tags": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": (
+                            "Only tasks carrying ALL of these tags, e.g. "
+                            "['#context/pc'] or ['#someday', '#context/pc']."
+                        ),
                         "default": None,
                     },
-                    "group": {
-                        "type": "string",
-                        "enum": ["priority", "waiting", "normal", "notag", "someday"],
-                        "description": "Filter to a specific group.",
+                    "exclude_tags": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": (
+                            "Only tasks carrying NONE of these tags, e.g. "
+                            "['#someday'] for an actionable list."
+                        ),
                         "default": None,
                     },
-                    "hide_future_scheduled": {"type": "boolean", "default": True},
-                    "include_someday": {"type": "boolean", "default": False},
-                    "include_waiting": {"type": "boolean", "default": True},
+                    "priority": {
+                        "type": "boolean",
+                        "description": (
+                            "Filter by the 🔼 priority facet, which a task may also "
+                            "inherit from its project note. Omit to ignore it."
+                        ),
+                        "default": None,
+                    },
+                    "untagged": {
+                        "type": "boolean",
+                        "description": "Filter to tasks with no tags at all (unprocessed).",
+                        "default": None,
+                    },
+                    "available_on": {
+                        # null is meaningful here: it disables the availability test.
+                        "type": ["string", "null"],
+                        "description": (
+                            "YYYY-MM-DD. Only return tasks actionable on this date; "
+                            "a task deferred with ⏳ to a later date is not, and in a "
+                            "project section silences that section entirely. Omit for "
+                            "today. Pass null to ignore availability."
+                        ),
+                        "default": None,
+                    },
                     "project_tasks_only": {"type": "boolean", "default": False},
                     "exclude_projects": {"type": "boolean", "default": False},
                     "apply_sequencing": {
@@ -119,7 +155,10 @@ def get_tools() -> list[Tool]:
         ),
         Tool(
             name="set_task_date",
-            description="Set, update, or remove a date emoji field (⏳📅🛫➕) on a task line.",
+            description=(
+                "Set, update, or remove a date on a task line. Only the two markers "
+                "this workflow writes are settable: ⏳ (scheduled) and ➕ (created)."
+            ),
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -127,7 +166,7 @@ def get_tools() -> list[Tool]:
                     "line": {"type": "integer"},
                     "date_type": {
                         "type": "string",
-                        "enum": ["due", "scheduled", "start", "created"],
+                        "enum": ["scheduled", "created"],
                     },
                     "date": {
                         "type": "string",
@@ -150,13 +189,20 @@ def get_tools() -> list[Tool]:
                         "description": "Task description (no emoji needed).",
                     },
                     "tags": {"type": "array", "items": {"type": "string"}, "default": []},
-                    "scheduled_date": {"type": "string", "default": None},
-                    "due_date": {"type": "string", "default": None},
-                    "start_date": {"type": "string", "default": None},
-                    "priority": {
+                    "scheduled_date": {
                         "type": "string",
-                        "enum": ["highest", "high", "medium", "low", "lowest", ""],
-                        "default": "",
+                        "description": (
+                            "YYYY-MM-DD. Defer the task until this date: it is not "
+                            "actionable before then and will not appear in task "
+                            "queries until it arrives. Not a deadline -- a real "
+                            "deadline belongs in the calendar, not here."
+                        ),
+                        "default": None,
+                    },
+                    "priority": {
+                        "type": "boolean",
+                        "description": "Mark the task as priority (writes 🔼).",
+                        "default": False,
                     },
                     "stamp_created": {"type": "boolean", "default": True},
                     "append_under_heading": {
@@ -174,18 +220,22 @@ def get_tools() -> list[Tool]:
 def get_handlers(config: Config) -> dict[str, Callable[..., Any]]:
     async def handle_get_tasks(arguments: dict[str, Any]) -> dict[str, Any]:
         args = GetTasksInput(**arguments)
+        # Omitted means today; an explicit null disables the availability test.
+        available_on = (
+            args.available_on if "available_on" in args.model_fields_set else date.today()
+        )
         return await asyncio.to_thread(
             collect_all_tasks,
             config.vault_path,
-            args.context_tag,
-            args.group,
-            args.hide_future_scheduled,
-            args.include_someday,
-            args.include_waiting,
-            args.project_tasks_only,
-            args.exclude_projects,
-            args.apply_sequencing,
-            args.path,
+            tags=args.tags,
+            exclude_tags=args.exclude_tags,
+            priority=args.priority,
+            untagged=args.untagged,
+            available_on=available_on,
+            project_tasks_only=args.project_tasks_only,
+            exclude_projects=args.exclude_projects,
+            apply_sequencing=args.apply_sequencing,
+            path=args.path,
         )
 
     async def handle_complete_task(arguments: dict[str, Any]) -> dict[str, Any]:
@@ -214,8 +264,6 @@ def get_handlers(config: Config) -> dict[str, Callable[..., Any]]:
             args.text,
             args.tags,
             args.scheduled_date,
-            args.due_date,
-            args.start_date,
             args.priority,
             args.stamp_created,
             args.append_under_heading,

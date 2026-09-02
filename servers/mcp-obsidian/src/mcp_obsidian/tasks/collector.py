@@ -1,19 +1,18 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
 from mcp_obsidian.tasks.parser import (
     GLOBAL_EXCLUDE,
+    PRIORITY_MARKER,
     RawTask,
     collect_tasks_from_file,
-    is_future_scheduled,
+    is_available,
 )
 from mcp_obsidian.vault.frontmatter import extract_tags
 from mcp_obsidian.vault.frontmatter import parse as parse_fm
-
-GROUP_ORDER = {"waiting": 0, "priority": 1, "normal": 2, "notag": 3, "someday": 4}
 
 
 def is_project_note(fm: dict[str, Any]) -> bool:
@@ -60,13 +59,17 @@ def process_project_note(
     rel_path: str,
     page_fm: dict[str, Any],
     page_ctime: float,
-    hide_future_scheduled: bool = True,
     apply_sequencing: bool = True,
 ) -> tuple[list[RawTask], bool]:
+    """Return the project's candidate tasks and whether it has a next action at all.
+
+    Availability is deliberately NOT applied here. Sequencing must pick the first
+    open task of each section first; filtering beforehand would step over a
+    deferred next action and promote the task behind it, which under strict
+    sequencing is work that cannot be done yet.
+    """
     all_tasks = collect_tasks_from_file(vault_root, rel_path, page_fm, page_ctime)
     open_tasks = [t for t in all_tasks if t.status == " "]
-    if hide_future_scheduled:
-        open_tasks = [t for t in open_tasks if not is_future_scheduled(t)]
     if not open_tasks:
         return [], False
     if apply_sequencing:
@@ -92,19 +95,16 @@ def process_non_project_note(
     ]
 
 
-def assign_group(task: RawTask, page_tags: list[str]) -> str:
-    if "#someday" in task.tags:
-        return "someday"
-    if "#waiting-on" in task.tags:
-        return "waiting"
-    # Priority if the task carries a priority emoji, OR if it belongs to a project
-    # note that is itself tagged with a priority emoji in its frontmatter — tasks
-    # inherit their project's priority.
-    if "🔼" in task.raw_line or "#🔼" in page_tags:
-        return "priority"
-    if len(task.tags) == 0:
-        return "notag"
-    return "normal"
+def resolve_priority(task: RawTask) -> bool:
+    """Whether the task is priority, from its own marker or inherited.
+
+    A task in a project note whose frontmatter carries the marker is a priority
+    task even without one of its own. Priority is a facet orthogonal to the
+    task's tags, not a bucket competing with them: a task can be priority and
+    #waiting-on and #context/phone at once, and a query for any of the three
+    must return it.
+    """
+    return task.priority or f"#{PRIORITY_MARKER}" in task.page_tags
 
 
 def resolve_sort_date(task: RawTask, page_fm: dict[str, Any], page_ctime: float) -> int:
@@ -126,11 +126,11 @@ def resolve_sort_date(task: RawTask, page_fm: dict[str, Any], page_ctime: float)
 
 def collect_all_tasks(
     vault_root: str,
-    context_tag: str | None = None,
-    group_filter: str | None = None,
-    hide_future_scheduled: bool = True,
-    include_someday: bool = False,
-    include_waiting: bool = True,
+    tags: list[str] | None = None,
+    exclude_tags: list[str] | None = None,
+    priority: bool | None = None,
+    untagged: bool | None = None,
+    available_on: date | None = None,
     project_tasks_only: bool = False,
     exclude_projects: bool = False,
     apply_sequencing: bool = True,
@@ -168,7 +168,6 @@ def collect_all_tasks(
                 rel_path,
                 fm,
                 page_ctime,
-                hide_future_scheduled=hide_future_scheduled,
                 apply_sequencing=apply_sequencing,
             )
             if not has_na:
@@ -179,18 +178,23 @@ def collect_all_tasks(
             )
 
         for raw_task in raw_tasks:
-            if not _is_project and hide_future_scheduled and is_future_scheduled(raw_task):
+            # Applied after sequencing has chosen the next action, so an
+            # unavailable next action silences its section rather than promoting
+            # the task behind it.
+            if available_on is not None and not is_available(raw_task, available_on):
                 continue
 
-            group = assign_group(raw_task, raw_task.page_tags)
+            task_priority = resolve_priority(raw_task)
 
-            if group_filter and group != group_filter:
+            # Facets are independent membership tests that AND together; a task
+            # belongs to every one that applies to it, not to a single bucket.
+            if priority is not None and task_priority != priority:
                 continue
-            if not include_someday and group == "someday":
+            if tags and not all(t in raw_task.tags for t in tags):
                 continue
-            if not include_waiting and group == "waiting":
+            if exclude_tags and any(t in raw_task.tags for t in exclude_tags):
                 continue
-            if context_tag and context_tag not in raw_task.tags:
+            if untagged is not None and (len(raw_task.tags) == 0) != untagged:
                 continue
 
             sort_date = resolve_sort_date(raw_task, fm, page_ctime)
@@ -202,22 +206,20 @@ def collect_all_tasks(
                     "raw_line": raw_task.raw_line,
                     "text": raw_task.text,
                     "tags": raw_task.tags,
-                    "due_date": raw_task.due_date,
                     "scheduled_date": raw_task.scheduled_date,
-                    "start_date": raw_task.start_date,
                     "created_date": raw_task.created_date,
-                    "priority": raw_task.priority,
+                    "priority": task_priority,
                     "recurrence": raw_task.recurrence,
-                    "group": group,
                     "sort_date_ms": sort_date,
                     "project_name": md_file.stem if _is_project else None,
                     "project_path": rel_path if _is_project else None,
                     "project_section": raw_task.section or None,
-                    "is_sequenced": _is_project,
+                    "project_task": _is_project,
                 }
             )
 
-    tasks.sort(key=lambda t: (GROUP_ORDER.get(t["group"], 99), t["sort_date_ms"]))
+    # Priority first, then oldest first within each.
+    tasks.sort(key=lambda t: (not t["priority"], t["sort_date_ms"]))
 
     return {
         "tasks": tasks,
