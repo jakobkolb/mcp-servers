@@ -145,10 +145,16 @@ def collect_tasks_from_file(
     return tasks
 
 
-def is_future_scheduled(task: RawTask) -> bool:
+def is_available(task: RawTask, on_date: date) -> bool:
+    """Whether the task can be worked on `on_date`.
+
+    ⏳ defers a task until a date: it is not actionable before then. Only ⏳ is
+    consulted -- 🛫 is not part of this workflow. A task scheduled exactly on
+    `on_date` is available.
+    """
     if not task.scheduled_date:
-        return False
+        return True
     try:
-        return date.fromisoformat(task.scheduled_date) > date.today()
+        return date.fromisoformat(task.scheduled_date) <= on_date
     except ValueError:
-        return False
+        return True

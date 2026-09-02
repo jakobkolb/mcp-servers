@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
+from datetime import date
 from typing import Any, Literal
 
 from mcp.types import Tool
@@ -17,11 +18,13 @@ from mcp_obsidian.tasks.mutator import (
 
 
 class GetTasksInput(BaseModel):
-    context_tag: str | None = None
-    group: Literal["priority", "waiting", "normal", "notag", "someday"] | None = None
-    hide_future_scheduled: bool = True
-    include_someday: bool = False
-    include_waiting: bool = True
+    model_config = ConfigDict(extra="forbid")
+
+    tags: list[str] | None = None
+    exclude_tags: list[str] | None = None
+    priority: bool | None = None
+    untagged: bool | None = None
+    available_on: date | None = None
     project_tasks_only: bool = False
     exclude_projects: bool = False
     apply_sequencing: bool = True
@@ -62,27 +65,56 @@ def get_tools() -> list[Tool]:
         Tool(
             name="get_tasks",
             description=(
-                "Collect and return all open tasks from the vault. "
-                "Applies project sequencing (first task per section), excludes Utility folder, "
-                "and groups tasks by priority/waiting/normal/notag/someday."
+                "Collect and return all open tasks from the vault. Applies project "
+                "sequencing (exactly one available next action per heading in a "
+                "#project note), excludes the Utility folder, and returns a flat list "
+                "where each task carries its facets: a priority flag and its tags."
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "context_tag": {
-                        "type": "string",
-                        "description": "Filter to tasks with this tag, e.g. '#context/pc'.",
+                    "tags": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": (
+                            "Only tasks carrying ALL of these tags, e.g. "
+                            "['#context/pc'] or ['#someday', '#context/pc']."
+                        ),
                         "default": None,
                     },
-                    "group": {
-                        "type": "string",
-                        "enum": ["priority", "waiting", "normal", "notag", "someday"],
-                        "description": "Filter to a specific group.",
+                    "exclude_tags": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": (
+                            "Only tasks carrying NONE of these tags, e.g. "
+                            "['#someday'] for an actionable list."
+                        ),
                         "default": None,
                     },
-                    "hide_future_scheduled": {"type": "boolean", "default": True},
-                    "include_someday": {"type": "boolean", "default": False},
-                    "include_waiting": {"type": "boolean", "default": True},
+                    "priority": {
+                        "type": "boolean",
+                        "description": (
+                            "Filter by the 🔼 priority facet, which a task may also "
+                            "inherit from its project note. Omit to ignore it."
+                        ),
+                        "default": None,
+                    },
+                    "untagged": {
+                        "type": "boolean",
+                        "description": "Filter to tasks with no tags at all (unprocessed).",
+                        "default": None,
+                    },
+                    "available_on": {
+                        # null is meaningful here: it disables the availability test.
+                        "type": ["string", "null"],
+                        "description": (
+                            "YYYY-MM-DD. Only return tasks actionable on this date; "
+                            "a task deferred with ⏳ to a later date is not, and in a "
+                            "project section silences that section entirely. Omit for "
+                            "today. Pass null to ignore availability."
+                        ),
+                        "default": None,
+                    },
                     "project_tasks_only": {"type": "boolean", "default": False},
                     "exclude_projects": {"type": "boolean", "default": False},
                     "apply_sequencing": {
@@ -188,18 +220,22 @@ def get_tools() -> list[Tool]:
 def get_handlers(config: Config) -> dict[str, Callable[..., Any]]:
     async def handle_get_tasks(arguments: dict[str, Any]) -> dict[str, Any]:
         args = GetTasksInput(**arguments)
+        # Omitted means today; an explicit null disables the availability test.
+        available_on = (
+            args.available_on if "available_on" in args.model_fields_set else date.today()
+        )
         return await asyncio.to_thread(
             collect_all_tasks,
             config.vault_path,
-            args.context_tag,
-            args.group,
-            args.hide_future_scheduled,
-            args.include_someday,
-            args.include_waiting,
-            args.project_tasks_only,
-            args.exclude_projects,
-            args.apply_sequencing,
-            args.path,
+            tags=args.tags,
+            exclude_tags=args.exclude_tags,
+            priority=args.priority,
+            untagged=args.untagged,
+            available_on=available_on,
+            project_tasks_only=args.project_tasks_only,
+            exclude_projects=args.exclude_projects,
+            apply_sequencing=args.apply_sequencing,
+            path=args.path,
         )
 
     async def handle_complete_task(arguments: dict[str, Any]) -> dict[str, Any]:
