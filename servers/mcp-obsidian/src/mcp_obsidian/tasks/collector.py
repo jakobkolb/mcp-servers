@@ -15,10 +15,19 @@ from mcp_obsidian.vault.frontmatter import extract_tags
 from mcp_obsidian.vault.frontmatter import parse as parse_fm
 
 
+def has_project_tag(fm: dict[str, Any]) -> bool:
+    return any(t.lower() in ("#project", "project") for t in extract_tags(fm))
+
+
 def is_project_note(fm: dict[str, Any]) -> bool:
-    tags = extract_tags(fm)
-    has_project_tag = any(t.lower() in ("#project", "project") for t in tags)
-    return has_project_tag and not fm.get("completed", False) and not fm.get("inactive", False)
+    """A live project note: tagged #project and neither completed nor inactive."""
+    return has_project_tag(fm) and not fm.get("completed", False) and not fm.get("inactive", False)
+
+
+def is_dormant_project(fm: dict[str, Any]) -> bool:
+    """A finished or paused project. Frontmatter is the source of truth, not the
+    folder the note happens to live in, and such a project contributes nothing."""
+    return has_project_tag(fm) and bool(fm.get("completed", False) or fm.get("inactive", False))
 
 
 def should_exclude_file(path: str, fm: dict[str, Any]) -> bool:
@@ -153,6 +162,12 @@ def collect_all_tasks(
         page_ctime = md_file.stat().st_ctime
 
         if should_exclude_file(rel_path, fm):
+            continue
+
+        # A completed or inactive project is skipped outright. Without this it
+        # would fall through to the non-project branch below, which returns every
+        # open task and applies no sequencing.
+        if is_dormant_project(fm):
             continue
 
         _is_project = is_project_note(fm)
