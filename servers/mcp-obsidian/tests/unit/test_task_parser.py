@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+from datetime import date
 from pathlib import Path
 
 from mcp_obsidian.tasks.parser import (
     collect_tasks_from_file,
     extract_tags,
-    is_future_scheduled,
+    is_available,
     parse_task_line,
 )
 
@@ -20,7 +21,7 @@ def test_parse_simple_open_task():
     assert task.status == " "
     assert task.text == "Buy milk"
     assert task.tags == []
-    assert task.priority == ""
+    assert task.priority is False
 
 
 def test_parse_completed_task_returns_none_status():
@@ -60,16 +61,27 @@ def test_parse_extracts_created_date():
     assert task.created_date == "2026-05-01"
 
 
-def test_parse_extracts_priority_highest():
-    task = parse_task_line("- [ ] Urgent task 🔺", "note.md", 1)
+def test_parse_marker_sets_priority_true():
+    task = parse_task_line("- [ ] Urgent task 🔼", "note.md", 1)
     assert task is not None
-    assert task.priority == "highest"
+    assert task.priority is True
+    assert "🔼" not in task.text
 
 
-def test_parse_extracts_priority_medium():
-    task = parse_task_line("- [ ] Medium task 🔼", "note.md", 1)
+def test_parse_other_priority_emoji_are_plain_text():
+    # 🔼 is the only priority marker. Everything else the Tasks plugin defines
+    # carries no meaning here and stays in the text like any other character.
+    for emoji in ("🔺", "⏫", "🔽", "⏬"):
+        task = parse_task_line(f"- [ ] Task {emoji}", "note.md", 1)
+        assert task is not None, emoji
+        assert task.priority is False, emoji
+        assert emoji in task.text, emoji
+
+
+def test_parse_no_marker_sets_priority_false():
+    task = parse_task_line("- [ ] Plain task", "note.md", 1)
     assert task is not None
-    assert task.priority == "medium"
+    assert task.priority is False
 
 
 def test_parse_strips_emoji_metadata_from_text():
@@ -85,10 +97,12 @@ def test_parse_strips_emoji_metadata_from_text():
     assert "Buy groceries" in task.text
 
 
-def test_parse_strips_priority_emoji_from_text():
-    task = parse_task_line("- [ ] Urgent task 🔺 do this now", "note.md", 1)
+def test_parse_strips_priority_marker_from_text():
+    task = parse_task_line("- [ ] Urgent task 🔼 do this now", "note.md", 1)
     assert task is not None
-    assert "🔺" not in task.text
+    assert "🔼" not in task.text
+    assert task.text.startswith("Urgent task")
+    assert task.text.endswith("do this now")
 
 
 def test_parse_sets_path_and_line():
@@ -172,23 +186,38 @@ def test_extract_tags_empty():
 
 
 # ---------------------------------------------------------------------------
-# is_future_scheduled
+# is_available
 # ---------------------------------------------------------------------------
 
 
-def test_is_future_scheduled_true_for_future_date():
+_ON = date(2026, 6, 15)
+
+
+def test_is_available_false_for_future_date():
     task = parse_task_line("- [ ] Thing ⏳2099-01-01", "note.md", 1)
     assert task is not None
-    assert is_future_scheduled(task) is True
+    assert is_available(task, _ON) is False
 
 
-def test_is_future_scheduled_false_for_past_date():
+def test_is_available_true_for_past_date():
     task = parse_task_line("- [ ] Thing ⏳2020-01-01", "note.md", 1)
     assert task is not None
-    assert is_future_scheduled(task) is False
+    assert is_available(task, _ON) is True
 
 
-def test_is_future_scheduled_false_when_no_date():
+def test_is_available_true_when_no_date():
     task = parse_task_line("- [ ] No date", "note.md", 1)
     assert task is not None
-    assert is_future_scheduled(task) is False
+    assert is_available(task, _ON) is True
+
+
+def test_is_available_true_on_the_scheduled_date_itself():
+    task = parse_task_line("- [ ] Thing ⏳2026-06-15", "note.md", 1)
+    assert task is not None
+    assert is_available(task, _ON) is True
+
+
+def test_is_available_ignores_start_date():
+    task = parse_task_line("- [ ] Thing 🛫2099-01-01", "note.md", 1)
+    assert task is not None
+    assert is_available(task, _ON) is True
