@@ -9,17 +9,15 @@ from mcp_obsidian.tasks.parser import PRIORITY_MARKER
 from mcp_obsidian.vault.io import atomic_write, patch_line
 from mcp_obsidian.vault.path import resolve
 
+# Only the markers this workflow writes. 📅 and 🛫 are read by the parser for
+# historical tasks but never written: a deadline lives in the calendar.
 DATE_EMOJI = {
-    "due": "📅",
     "scheduled": "⏳",
-    "start": "🛫",
     "created": "➕",
 }
 
 DATE_PATTERN: dict[str, re.Pattern[str]] = {
-    "due": re.compile(r"📅\s?(\d{4}-\d{2}-\d{2})"),
     "scheduled": re.compile(r"⏳\s?(\d{4}-\d{2}-\d{2})"),
-    "start": re.compile(r"🛫\s?(\d{4}-\d{2}-\d{2})"),
     "created": re.compile(r"➕\s?(\d{4}-\d{2}-\d{2})"),
 }
 
@@ -113,16 +111,12 @@ def add_task_to_file(
     text: str,
     tags: list[str],
     scheduled_date: str | None,
-    due_date: str | None,
-    start_date: str | None,
     priority: bool,
     stamp_created: bool,
     append_under_heading: str | None,
 ) -> dict[str, Any]:
     abs_path = resolve(vault_root, relative)
-    task_line = _build_task_line(
-        text, tags, scheduled_date, due_date, start_date, priority, stamp_created
-    )
+    task_line = _build_task_line(text, tags, scheduled_date, priority, stamp_created)
 
     if not abs_path.exists():
         atomic_write(abs_path, (task_line + "\n").encode("utf-8"))
@@ -148,8 +142,6 @@ def _build_task_line(
     text: str,
     tags: list[str],
     scheduled_date: str | None,
-    due_date: str | None,
-    start_date: str | None,
     priority: bool,
     stamp_created: bool,
 ) -> str:
@@ -162,10 +154,6 @@ def _build_task_line(
         parts.append(f"➕{date.today().isoformat()}")
     if scheduled_date:
         parts.append(f"⏳{scheduled_date}")
-    if due_date:
-        parts.append(f"📅{due_date}")
-    if start_date:
-        parts.append(f"🛫{start_date}")
     return " ".join(parts)
 
 
