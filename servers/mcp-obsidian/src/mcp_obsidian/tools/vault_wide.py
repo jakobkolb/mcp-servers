@@ -15,7 +15,7 @@ def get_tools() -> list[Tool]:
         Tool(
             name="get_vault_stats",
             description="Return vault stats: note/file/dir counts, total size, recently modified.",
-            inputSchema={"type": "object", "properties": {}},
+            input_schema={"type": "object", "properties": {}},
         ),
     ]
 

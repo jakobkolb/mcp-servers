@@ -615,4 +615,4 @@ def test_all_handlers_have_descriptions() -> None:
         desc = handler.get_tool_description()
         assert desc.name
         assert desc.description
-        assert desc.inputSchema
+        assert desc.input_schema

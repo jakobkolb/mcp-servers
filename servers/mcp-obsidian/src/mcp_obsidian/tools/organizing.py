@@ -47,7 +47,7 @@ def get_tools() -> list[Tool]:
         Tool(
             name="move_note",
             description="Move or rename a .md note, rewriting [[wiki-links]] that reference it.",
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "source": {"type": "string", "description": "Vault-relative current path."},
@@ -63,7 +63,7 @@ def get_tools() -> list[Tool]:
                 "Move any file without rewriting wiki-links. Binary-safe. "
                 "Use move_note for .md files unless link rewriting is unwanted."
             ),
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "source": {"type": "string"},
@@ -76,7 +76,7 @@ def get_tools() -> list[Tool]:
         Tool(
             name="delete_note",
             description="Delete a markdown note. Irreversible. Requires confirm=true to proceed.",
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "path": {"type": "string"},
@@ -95,7 +95,7 @@ def get_tools() -> list[Tool]:
                 "Return all notes that contain a [[wiki-link]] pointing to the given note. "
                 "Useful for knowledge graph navigation and finding related notes."
             ),
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "path": {
@@ -112,7 +112,7 @@ def get_tools() -> list[Tool]:
                 "Return all [[wiki-links]] found in a note body, with line number, "
                 "context snippet, and an exists flag (False means a broken link)."
             ),
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "path": {

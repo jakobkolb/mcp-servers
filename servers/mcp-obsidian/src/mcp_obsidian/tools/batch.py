@@ -47,7 +47,7 @@ def _validate_invocations(
                 }
             )
             continue
-        schema = tools_by_name[tool_name].inputSchema
+        schema = tools_by_name[tool_name].input_schema
         try:
             jsonschema.validate(instance=arguments, schema=schema)
         except jsonschema.ValidationError as exc:
@@ -112,7 +112,7 @@ def get_tool() -> Tool:
             "All invocations are validated before any are executed — "
             "if any fail validation, no side effects occur."
         ),
-        inputSchema={
+        input_schema={
             "type": "object",
             "properties": {
                 "invocations": {
