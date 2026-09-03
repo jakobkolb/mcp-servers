@@ -12,9 +12,7 @@ from mcp_obsidian.tools.registry import register_all_tools
 
 
 def build_server(config: Config) -> Server:
-    server = Server("mcp-obsidian")
-    register_all_tools(server, config)
-    return server
+    return register_all_tools(config)
 
 
 async def run_stdio(server: Server) -> None:

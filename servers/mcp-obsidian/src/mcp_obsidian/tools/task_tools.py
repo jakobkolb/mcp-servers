@@ -70,7 +70,7 @@ def get_tools() -> list[Tool]:
                 "#project note), excludes the Utility folder, and returns a flat list "
                 "where each task carries its facets: a priority flag and its tags."
             ),
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "tags": {
@@ -136,7 +136,7 @@ def get_tools() -> list[Tool]:
         Tool(
             name="complete_task",
             description="Mark an open task as done. Patches - [ ] → - [x] and appends ✅ date.",
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "path": {"type": "string"},
@@ -159,7 +159,7 @@ def get_tools() -> list[Tool]:
                 "Set, update, or remove a date on a task line. Only the two markers "
                 "this workflow writes are settable: ⏳ (scheduled) and ➕ (created)."
             ),
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "path": {"type": "string"},
@@ -180,7 +180,7 @@ def get_tools() -> list[Tool]:
         Tool(
             name="add_task",
             description="Append a new task to a file with proper emoji metadata formatting.",
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "path": {"type": "string"},

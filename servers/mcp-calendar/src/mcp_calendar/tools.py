@@ -38,7 +38,7 @@ class ListCalendarsToolHandler(ToolHandler):
         return Tool(
             name=self.name,
             description="List all available calendars grouped by backend.",
-            inputSchema={"type": "object", "properties": {}, "required": []},
+            input_schema={"type": "object", "properties": {}, "required": []},
         )
 
     def run_tool(self, args: dict[str, Any]) -> ToolResult:
@@ -56,7 +56,7 @@ class ListEventsToolHandler(ToolHandler):
         return Tool(
             name=self.name,
             description="List calendar events within a date/time range across all backends.",
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "start": {
@@ -108,7 +108,7 @@ class CreateEventToolHandler(ToolHandler):
                 "Supports both timed events (ISO 8601 datetime) and all-day events "
                 "(YYYY-MM-DD date strings — omit the time component entirely)."
             ),
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "backend": {
@@ -196,7 +196,7 @@ class UpdateEventToolHandler(ToolHandler):
         return Tool(
             name=self.name,
             description="Update an existing calendar event identified by UID.",
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "uid": {
@@ -285,7 +285,7 @@ class DeleteEventToolHandler(ToolHandler):
         return Tool(
             name=self.name,
             description="Delete a calendar event by UID.",
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "uid": {
@@ -324,7 +324,7 @@ class GetFreeBusyToolHandler(ToolHandler):
         return Tool(
             name=self.name,
             description="Get busy time slots within a date/time range across all backends.",
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "start": {
@@ -374,7 +374,7 @@ class CreateTaskToolHandler(ToolHandler):
         return Tool(
             name=self.name,
             description="Create a new VTODO task/reminder on a specific backend.",
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "backend": {
@@ -446,7 +446,7 @@ class UpdateTaskToolHandler(ToolHandler):
         return Tool(
             name=self.name,
             description="Update an existing VTODO task identified by UID.",
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "uid": {
@@ -525,7 +525,7 @@ class ListTasksToolHandler(ToolHandler):
         return Tool(
             name=self.name,
             description="List VTODO tasks/reminders across all backends.",
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "backend": {
@@ -562,7 +562,7 @@ class DeleteTaskToolHandler(ToolHandler):
         return Tool(
             name=self.name,
             description="Delete a VTODO task by UID.",
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "uid": {
