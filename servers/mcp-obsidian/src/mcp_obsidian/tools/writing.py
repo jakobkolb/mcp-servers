@@ -44,7 +44,7 @@ def get_tools() -> list[Tool]:
         Tool(
             name="write_note",
             description="Create or write a note (overwrite/append/prepend). All writes are atomic.",
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "path": {"type": "string"},
@@ -68,7 +68,7 @@ def get_tools() -> list[Tool]:
                 "Targeted find-and-replace within a note. Works on bytes to handle emoji. "
                 "Raises PATCH_NO_MATCH if not found, PATCH_AMBIGUOUS if multiple matches."
             ),
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "path": {"type": "string"},
@@ -85,7 +85,7 @@ def get_tools() -> list[Tool]:
         Tool(
             name="update_frontmatter",
             description="Merge or replace frontmatter fields on a note, preserving the body.",
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "path": {"type": "string"},
@@ -102,7 +102,7 @@ def get_tools() -> list[Tool]:
         Tool(
             name="manage_tags",
             description="Add, remove, or list tags in the frontmatter tags field of a note.",
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "path": {"type": "string"},

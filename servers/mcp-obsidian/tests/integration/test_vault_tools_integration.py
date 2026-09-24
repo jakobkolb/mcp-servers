@@ -173,14 +173,12 @@ class TestContextTagRename:
     """Rename #context/kids → #context/children across all task files."""
 
     def test_finds_kids_tasks_before_rename(self, mcp_client: StdioMCPClient):
-        resp = mcp_client.call_tool("get_tasks", {"context_tag": "#context/kids"})
+        resp = mcp_client.call_tool("get_tasks", {"tags": ["#context/kids"]})
         data = tool_payload(resp)
         assert data["total_tasks"] > 0, "Expected at least one #context/kids task before rename"
 
     def test_rename_tag_via_patch_note(self, mcp_client: StdioMCPClient, task_vault: Path):
-        resp = mcp_client.call_tool(
-            "get_tasks", {"context_tag": "#context/kids", "include_someday": True}
-        )
+        resp = mcp_client.call_tool("get_tasks", {"tags": ["#context/kids"]})
         data = tool_payload(resp)
 
         affected_paths: set[str] = {task["path"] for task in data["tasks"]}
@@ -202,18 +200,14 @@ class TestContextTagRename:
             )
 
     def test_no_kids_tasks_after_rename(self, mcp_client: StdioMCPClient):
-        resp = mcp_client.call_tool(
-            "get_tasks", {"context_tag": "#context/kids", "include_someday": True}
-        )
+        resp = mcp_client.call_tool("get_tasks", {"tags": ["#context/kids"]})
         data = tool_payload(resp)
         assert data["total_tasks"] == 0, (
             f"Expected 0 #context/kids tasks after rename, got {data['total_tasks']}"
         )
 
     def test_children_tasks_exist_after_rename(self, mcp_client: StdioMCPClient):
-        resp = mcp_client.call_tool(
-            "get_tasks", {"context_tag": "#context/children", "include_someday": True}
-        )
+        resp = mcp_client.call_tool("get_tasks", {"tags": ["#context/children"]})
         data = tool_payload(resp)
         assert data["total_tasks"] > 0, "Expected #context/children tasks to exist after rename"
 
@@ -236,7 +230,7 @@ class TestCompleteTaskWorkflow:
     """Complete a #context/phone task and verify it disappears from open tasks."""
 
     def test_complete_phone_task(self, mcp_client: StdioMCPClient, task_vault: Path):
-        resp = mcp_client.call_tool("get_tasks", {"context_tag": "#context/phone"})
+        resp = mcp_client.call_tool("get_tasks", {"tags": ["#context/phone"]})
         data = tool_payload(resp)
         assert data["total_tasks"] >= 1, "Need at least one #context/phone task"
 
@@ -254,7 +248,7 @@ class TestCompleteTaskWorkflow:
         ]
 
     def test_phone_task_gone_from_open_tasks(self, mcp_client: StdioMCPClient):
-        resp = mcp_client.call_tool("get_tasks", {"context_tag": "#context/phone"})
+        resp = mcp_client.call_tool("get_tasks", {"tags": ["#context/phone"]})
         data = tool_payload(resp)
         assert data["total_tasks"] == 0, "Phone task should be gone after completion"
 
@@ -276,7 +270,7 @@ class TestDeferTaskWorkflow:
     def test_pc_task_visible_before_defer(self, mcp_client: StdioMCPClient):
         resp = mcp_client.call_tool(
             "get_tasks",
-            {"context_tag": "#context/pc", "hide_future_scheduled": False},
+            {"tags": ["#context/pc"], "available_on": None},
         )
         data = tool_payload(resp)
         assert data["total_tasks"] >= 1, "Need at least one #context/pc task"
@@ -284,7 +278,7 @@ class TestDeferTaskWorkflow:
     def test_defer_pc_task_to_future(self, mcp_client: StdioMCPClient):
         resp = mcp_client.call_tool(
             "get_tasks",
-            {"context_tag": "#context/pc", "hide_future_scheduled": False},
+            {"tags": ["#context/pc"], "available_on": None},
         )
         data = tool_payload(resp)
 
@@ -308,7 +302,7 @@ class TestDeferTaskWorkflow:
     def test_deferred_task_hidden_with_flag(self, mcp_client: StdioMCPClient):
         resp = mcp_client.call_tool(
             "get_tasks",
-            {"context_tag": "#context/pc", "hide_future_scheduled": True},
+            {"tags": ["#context/pc"]},
         )
         data = tool_payload(resp)
 
@@ -317,13 +311,13 @@ class TestDeferTaskWorkflow:
 
         for task in data["tasks"]:
             assert not (task["path"] == deferred_path and task["line"] == deferred_line), (
-                "Deferred task should be hidden when hide_future_scheduled=True"
+                "Deferred task should be hidden when filtering to today"
             )
 
     def test_deferred_task_visible_without_flag(self, mcp_client: StdioMCPClient):
         resp = mcp_client.call_tool(
             "get_tasks",
-            {"context_tag": "#context/pc", "hide_future_scheduled": False},
+            {"tags": ["#context/pc"], "available_on": None},
         )
         data = tool_payload(resp)
 
@@ -333,7 +327,7 @@ class TestDeferTaskWorkflow:
         found = any(
             t["path"] == deferred_path and t["line"] == deferred_line for t in data["tasks"]
         )
-        assert found, "Deferred task should appear when hide_future_scheduled=False"
+        assert found, "Deferred task should appear when availability is ignored"
 
 
 # ---------------------------------------------------------------------------
@@ -401,7 +395,7 @@ class TestAddTaskWorkflow:
         assert not resp["result"].get("isError"), resp["result"]["content"][0]["text"]
 
     def test_added_task_appears_in_get_tasks(self, mcp_client: StdioMCPClient):
-        resp = mcp_client.call_tool("get_tasks", {"context_tag": "#context/test"})
+        resp = mcp_client.call_tool("get_tasks", {"tags": ["#context/test"]})
         data = tool_payload(resp)
 
         found = any(self._TASK_TEXT in t["text"] for t in data["tasks"])
@@ -544,22 +538,38 @@ class TestProjectSequencing:
             f"got {data['total_tasks']}"
         )
 
-    def test_future_scheduled_filtered_before_sequencing(self, seq_client: StdioMCPClient):
-        """With hide_future_scheduled=True the future task is removed BEFORE sequencing picks
-        the first task in the section — so the current task must surface."""
+    def test_deferred_next_action_silences_its_section(self, seq_client: StdioMCPClient):
+        """Sequencing picks the section's next action first, then availability is applied.
+
+        The Todo section's first task is deferred to 2099, so the section has nothing
+        available: it must contribute no tasks rather than promoting the task behind it,
+        which depends on the deferred one.
+        """
+        resp = seq_client.call_tool("get_tasks", {"project_tasks_only": True})
+        data = tool_payload(resp)
+
+        todo_tasks = [t for t in data["tasks"] if t.get("project_section") == "Todo"]
+        assert todo_tasks == [], f"Deferred next action must silence its section, got: {todo_tasks}"
+
+    def test_ignoring_availability_reveals_the_deferred_next_action(
+        self, seq_client: StdioMCPClient
+    ):
+        resp = seq_client.call_tool("get_tasks", {"project_tasks_only": True, "available_on": None})
+        data = tool_payload(resp)
+
+        todo_tasks = [t for t in data["tasks"] if t.get("project_section") == "Todo"]
+        assert len(todo_tasks) == 1, f"Expected the deferred next action, got {todo_tasks}"
+        assert "Far future task" in todo_tasks[0]["text"]
+
+    def test_future_available_on_reveals_the_deferred_next_action(self, seq_client: StdioMCPClient):
         resp = seq_client.call_tool(
-            "get_tasks",
-            {"project_tasks_only": True, "hide_future_scheduled": True},
+            "get_tasks", {"project_tasks_only": True, "available_on": "2100-01-01"}
         )
         data = tool_payload(resp)
 
         todo_tasks = [t for t in data["tasks"] if t.get("project_section") == "Todo"]
-        assert len(todo_tasks) == 1, (
-            f"Expected exactly 1 Todo task after filtering future task, got {len(todo_tasks)}"
-        )
-        assert "Current task" in todo_tasks[0]["text"], (
-            f"Expected 'Current task' to surface, got: {todo_tasks[0]['text']!r}"
-        )
+        assert len(todo_tasks) == 1, f"Expected the deferred next action, got {todo_tasks}"
+        assert "Far future task" in todo_tasks[0]["text"]
 
     def test_apply_sequencing_false_shows_all_project_tasks(self, seq_client: StdioMCPClient):
         """apply_sequencing=False must bypass sequencing and return all open project tasks."""

@@ -43,7 +43,7 @@ async def test_batch_missing_required_field_returns_validation_failed():
     tool = Tool(
         name="dummy",
         description="",
-        inputSchema={
+        input_schema={
             "type": "object",
             "properties": {"path": {"type": "string"}},
             "required": ["path"],
@@ -80,7 +80,7 @@ async def test_batch_no_side_effects_on_validation_failure():
     tool = Tool(
         name="dummy",
         description="",
-        inputSchema={
+        input_schema={
             "type": "object",
             "properties": {"path": {"type": "string"}},
             "required": ["path"],
@@ -110,7 +110,7 @@ async def test_batch_executes_valid_invocations():
     tool = Tool(
         name="dummy",
         description="",
-        inputSchema={"type": "object", "properties": {}},
+        input_schema={"type": "object", "properties": {}},
     )
     handler = _ok_handler({"result": "done"})
     result = await execute_batch(
@@ -130,7 +130,7 @@ async def test_batch_returns_error_per_invocation_on_runtime_failure():
     tool = Tool(
         name="dummy",
         description="",
-        inputSchema={"type": "object", "properties": {}},
+        input_schema={"type": "object", "properties": {}},
     )
     handler = _failing_handler(ValueError("boom"))
     result = await execute_batch(
@@ -150,7 +150,7 @@ async def test_batch_result_indices_match_submission_order():
     tool = Tool(
         name="dummy",
         description="",
-        inputSchema={"type": "object", "properties": {}},
+        input_schema={"type": "object", "properties": {}},
     )
     handlers = {"dummy": AsyncMock(side_effect=[{"n": 0}, {"n": 1}, {"n": 2}])}
     result = await execute_batch(
@@ -178,7 +178,7 @@ async def test_batch_same_path_executed_sequentially():
     tool = Tool(
         name="write",
         description="",
-        inputSchema={
+        input_schema={
             "type": "object",
             "properties": {"path": {"type": "string"}},
         },
@@ -214,7 +214,7 @@ async def test_batch_read_only_tools_always_allowed():
     tool = Tool(
         name="search",
         description="",
-        inputSchema={"type": "object", "properties": {}},
+        input_schema={"type": "object", "properties": {}},
     )
     handler = _ok_handler({"hits": []})
     result = await execute_batch(

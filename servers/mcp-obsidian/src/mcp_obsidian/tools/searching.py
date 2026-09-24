@@ -30,7 +30,7 @@ def get_tools() -> list[Tool]:
                 "Full-text regex search across vault .md files. "
                 "Falls back to literal match when query is not valid regex."
             ),
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "query": {
@@ -79,7 +79,7 @@ def get_tools() -> list[Tool]:
         Tool(
             name="list_all_tags",
             description="Return all vault tags with occurrence counts, sorted by count descending.",
-            inputSchema={"type": "object", "properties": {}},
+            input_schema={"type": "object", "properties": {}},
         ),
     ]
 

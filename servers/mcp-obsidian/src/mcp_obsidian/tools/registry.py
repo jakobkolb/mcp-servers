@@ -4,7 +4,15 @@ import json
 from typing import Any
 
 from mcp.server import Server
-from mcp.types import CallToolResult, TextContent, Tool
+from mcp.server.context import ServerRequestContext
+from mcp.types import (
+    CallToolRequestParams,
+    CallToolResult,
+    ListToolsResult,
+    PaginatedRequestParams,
+    TextContent,
+    Tool,
+)
 
 from mcp_obsidian.config import Config
 from mcp_obsidian.errors import (
@@ -30,12 +38,12 @@ from mcp_obsidian.tools import (
 
 def _error_result(code: str, message: str) -> CallToolResult:
     return CallToolResult(
-        isError=True,
+        is_error=True,
         content=[TextContent(type="text", text=f"{code}: {message}")],
     )
 
 
-def register_all_tools(server: Server, config: Config) -> None:
+def register_all_tools(config: Config) -> Server[Any]:
     tool_modules = [reading, searching, writing, organizing, vault_wide, task_tools]
 
     all_tools: list[Tool] = []
@@ -48,18 +56,20 @@ def register_all_tools(server: Server, config: Config) -> None:
     # batch_tool registered last so it can reference all other handlers/tools.
     batch.register(config, all_tools, all_handlers)
 
-    @server.list_tools()
-    async def list_tools() -> list[Tool]:
-        return all_tools
+    async def on_list_tools(
+        ctx: ServerRequestContext[Any, Any], params: PaginatedRequestParams | None
+    ) -> ListToolsResult:
+        return ListToolsResult(tools=all_tools)
 
-    @server.call_tool()
-    async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
-        handler = all_handlers.get(name)
+    async def on_call_tool(
+        ctx: ServerRequestContext[Any, Any], params: CallToolRequestParams
+    ) -> CallToolResult:
+        handler = all_handlers.get(params.name)
         if handler is None:
-            return _error_result("NOT_IMPLEMENTED", f"Tool {name!r} is not implemented.")
+            return _error_result("NOT_IMPLEMENTED", f"Tool {params.name!r} is not implemented.")
 
         try:
-            result = await handler(arguments or {})
+            result = await handler(params.arguments or {})
             return CallToolResult(
                 content=[
                     TextContent(
@@ -86,3 +96,9 @@ def register_all_tools(server: Server, config: Config) -> None:
             return _error_result("VAULT_ERROR", str(e))
         except Exception as e:
             return _error_result("INTERNAL_ERROR", str(e))
+
+    return Server(
+        "mcp-obsidian",
+        on_list_tools=on_list_tools,
+        on_call_tool=on_call_tool,
+    )

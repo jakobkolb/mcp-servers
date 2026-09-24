@@ -68,7 +68,7 @@ def get_tools() -> list[Tool]:
         Tool(
             name="read_note",
             description="Read a markdown note. Returns frontmatter, body, raw content, metadata.",
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "path": {
@@ -99,7 +99,7 @@ def get_tools() -> list[Tool]:
             description=(
                 "Return only the YAML frontmatter (~5% cost of read_note). Use for filter passes."
             ),
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "path": {"type": "string", "description": "Vault-relative path."},
@@ -112,7 +112,7 @@ def get_tools() -> list[Tool]:
             description=(
                 "Return filesystem metadata (mtime, ctime, size, is_note) without reading content."
             ),
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "paths": {"type": "array", "items": {"type": "string"}},
@@ -126,7 +126,7 @@ def get_tools() -> list[Tool]:
                 "List files and subdirectories in a vault folder. "
                 "Cheaper than search_notes when the path is known."
             ),
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "path": {

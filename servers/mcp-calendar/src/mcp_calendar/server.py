@@ -8,8 +8,18 @@ from typing import Any
 import uvicorn
 from dotenv import load_dotenv
 from mcp.server import Server
+from mcp.server.context import ServerRequestContext
 from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
-from mcp.types import EmbeddedResource, ImageContent, TextContent, Tool
+from mcp.types import (
+    CallToolRequestParams,
+    CallToolResult,
+    EmbeddedResource,
+    ImageContent,
+    ListToolsResult,
+    PaginatedRequestParams,
+    TextContent,
+    Tool,
+)
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -36,16 +46,13 @@ except FileNotFoundError:
 except Exception:
     logger.exception("Failed to load calendar config from %s", _config_path)
 
-app = Server("mcp-calendar")
 _handlers = {h.name: h for h in tools.ALL_HANDLERS}
 
 
-@app.list_tools()
 async def list_tools() -> list[Tool]:
     return [h.get_tool_description() for h in _handlers.values()]
 
 
-@app.call_tool()
 async def call_tool(
     name: str, arguments: Any
 ) -> Sequence[TextContent | ImageContent | EmbeddedResource]:
@@ -59,6 +66,29 @@ async def call_tool(
     except Exception as e:
         logger.error(str(e))
         raise RuntimeError(f"Error: {str(e)}") from e
+
+
+async def _on_list_tools(
+    ctx: ServerRequestContext[Any, Any], params: PaginatedRequestParams | None
+) -> ListToolsResult:
+    return ListToolsResult(tools=await list_tools())
+
+
+async def _on_call_tool(
+    ctx: ServerRequestContext[Any, Any], params: CallToolRequestParams
+) -> CallToolResult:
+    try:
+        content = await call_tool(params.name, params.arguments or {})
+        return CallToolResult(content=list(content))
+    except Exception as e:
+        return CallToolResult(is_error=True, content=[TextContent(type="text", text=str(e))])
+
+
+app: Server[Any] = Server(
+    "mcp-calendar",
+    on_list_tools=_on_list_tools,
+    on_call_tool=_on_call_tool,
+)
 
 
 _session_manager = StreamableHTTPSessionManager(
