@@ -214,7 +214,7 @@ class CaldavBackend(CalendarBackend):
         try:
             return col.get_todo_by_uid(uid)
         except Exception:
-            for task in col.todos():
+            for task in col.todos(include_completed=True):
                 if str(task.icalendar_component.get("uid", "")) == uid:
                     return task
             raise
@@ -365,6 +365,8 @@ class CaldavBackend(CalendarBackend):
         if calendar_name is not None:
             target = next((c for c in collections if c.name == calendar_name), None)
             if target is None:
+                if calendar_name in self.list_calendars():
+                    raise ValueError(f"Calendar '{calendar_name}' does not support tasks")
                 raise ValueError(f"Calendar '{calendar_name}' not found")
         else:
             if not collections:
@@ -412,20 +414,7 @@ class CaldavBackend(CalendarBackend):
             )
             task_obj.data = _to_ical(raw_cal)
             task_obj.save()
-
-            final_summary = summary if summary is not None else str(vtodo.get("SUMMARY", ""))
-            existing_status = str(vtodo.get("STATUS", "NEEDS-ACTION"))
-            final_status = status if status is not None else existing_status
-            return CalendarTask(
-                uid=uid,
-                summary=final_summary,
-                description=description,
-                due=due,
-                priority=priority if priority is not None else 0,
-                status=final_status,
-                calendar_name=getattr(col, "name", "") or "",
-                backend_name=self.name,
-            )
+            return self._parse_task(vtodo, getattr(col, "name", "") or "")
 
         raise ValueError(f"Task with uid '{uid}' not found in any collection")
 
@@ -439,7 +428,9 @@ class CaldavBackend(CalendarBackend):
                 continue
         raise ValueError(f"Task with uid '{uid}' not found in any collection")
 
-    def list_tasks(self, calendar_name: str | None = None) -> list[CalendarTask]:
+    def list_tasks(
+        self, calendar_name: str | None = None, include_completed: bool = False
+    ) -> list[CalendarTask]:
         tasks: list[CalendarTask] = []
         collections = self._get_task_collections()
         if calendar_name is not None:
@@ -447,7 +438,7 @@ class CaldavBackend(CalendarBackend):
         for col in collections:
             try:
                 col_name: str = col.name or ""
-                for obj in col.todos():
+                for obj in col.todos(include_completed=include_completed):
                     try:
                         tasks.append(self._parse_task(obj.icalendar_component, col_name))
                     except Exception:
@@ -499,7 +490,9 @@ class GoogleBackend(CaldavBackend):
             password=cfg.password,
         )
 
-    def list_tasks(self, calendar_name: str | None = None) -> list[CalendarTask]:
+    def list_tasks(
+        self, calendar_name: str | None = None, include_completed: bool = False
+    ) -> list[CalendarTask]:
         return []
 
     def create_task(self, summary: str, **kwargs: object) -> CalendarTask:  # type: ignore[override]
