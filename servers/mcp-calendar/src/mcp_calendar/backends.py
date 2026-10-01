@@ -128,13 +128,11 @@ class CaldavBackend(CalendarBackend):
         description = comp.get("description")
         location = comp.get("location")
         triggers = [a["TRIGGER"].dt for a in comp.walk("VALARM") if "TRIGGER" in a]
-        dtstart = comp.get("dtstart")
-        dtend = comp.get("dtend")
         return CalendarEvent(
             uid=str(comp.get("uid", "")),
             summary=str(comp.get("summary", "")),
-            start=localize(dtstart.dt) if dtstart is not None else datetime.now(tz=UTC),
-            end=localize(dtend.dt) if dtend is not None else datetime.now(tz=UTC),
+            start=localize(comp.start),
+            end=localize(comp.end),  # derives a missing DTEND from DURATION or RFC 5545 defaults
             description=str(description) if description is not None else None,
             location=str(location) if location is not None else None,
             calendar_name=cal_name,
