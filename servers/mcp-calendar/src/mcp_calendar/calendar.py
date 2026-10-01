@@ -30,6 +30,7 @@ class CalendarEvent:
     backend_name: str = ""
     alarms: list[timedelta] = field(default_factory=list)
     transparent: bool = False  # TRANSP:TRANSPARENT, i.e. doesn't block time
+    recurrence_id: datetime | date | None = None  # set only for instances of a series
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -42,6 +43,7 @@ class CalendarEvent:
             "calendar_name": self.calendar_name,
             "backend_name": self.backend_name,
             "alarms": [int(a.total_seconds() / 60) for a in self.alarms],
+            "recurrence_id": self.recurrence_id.isoformat() if self.recurrence_id else None,
         }
 
 
@@ -91,6 +93,7 @@ class CalendarBackend(ABC):
         description: str | None = None,
         location: str | None = None,
         alarms: list[timedelta] | None = None,
+        rrule: str | None = None,
     ) -> CalendarEvent: ...
 
     @abstractmethod
@@ -103,10 +106,11 @@ class CalendarBackend(ABC):
         description: str | None = None,
         location: str | None = None,
         alarms: list[timedelta] | None = None,
+        recurrence_id: datetime | date | None = None,
     ) -> CalendarEvent: ...
 
     @abstractmethod
-    def delete_event(self, uid: str) -> None: ...
+    def delete_event(self, uid: str, recurrence_id: datetime | date | None = None) -> None: ...
 
     @abstractmethod
     def get_freebusy(

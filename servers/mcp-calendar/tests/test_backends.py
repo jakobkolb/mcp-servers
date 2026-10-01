@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from datetime import UTC, date, datetime, timedelta
 from unittest.mock import MagicMock, patch
 from zoneinfo import ZoneInfo
 
 import icalendar
 import pytest
+import recurring_ical_events
 from mcp_calendar.backends import CaldavBackend, GoogleBackend, ICloudBackend, NextcloudBackend
 from mcp_calendar.calendar import CalendarEvent, CalendarTask, UnsupportedOperationError
 from mcp_calendar.config import GoogleConfig, ICloudConfig, NextcloudConfig
@@ -429,6 +431,93 @@ def test_update_event_rejects_time_change_on_series() -> None:
             _make_backend().update_event("series", start=datetime(2026, 11, 4, 9, tzinfo=UTC))
         _make_backend().update_event("series", summary="Renamed")  # non-time fields still fine
     assert "SUMMARY:Renamed" in raw.data
+
+
+@pytest.fixture
+def series() -> Iterator[tuple[CaldavBackend, MagicMock]]:
+    cal = _mock_cal("Work")
+    raw = MagicMock(data=_SERIES)
+    cal.event_by_uid.return_value = raw
+    with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
+        MockClient.return_value.principal.return_value.calendars.return_value = [cal]
+        yield _make_backend(), raw
+
+
+def _instances(data: str) -> list[tuple[str, datetime | date]]:
+    cal = icalendar.Calendar.from_ical(data)
+    return [
+        (str(o["SUMMARY"]), o.start)
+        for o in recurring_ical_events.of(cal).between(datetime(2026, 1, 1), datetime(2027, 1, 1))
+    ]
+
+
+def test_update_event_instance_moves_only_that_instance(
+    series: tuple[CaldavBackend, MagicMock],
+) -> None:
+    backend, raw = series
+    rid = datetime(2026, 11, 3, 8, tzinfo=UTC)
+    moved = backend.update_event(
+        "series", start=datetime(2026, 11, 3, 10, tzinfo=UTC), recurrence_id=rid
+    )
+
+    assert moved.recurrence_id == rid
+    assert moved.end == datetime(2026, 11, 3, 17, 30, tzinfo=UTC)  # duration kept
+    assert _instances(raw.data) == [
+        ("Work block", datetime(2026, 10, 20, 8, tzinfo=UTC)),
+        ("Moved", datetime(2026, 10, 27, 20, tzinfo=UTC)),
+        ("Work block", datetime(2026, 11, 3, 10, tzinfo=UTC)),
+        ("Work block", datetime(2026, 11, 10, 8, tzinfo=UTC)),
+        ("Work block", datetime(2026, 11, 17, 8, tzinfo=UTC)),
+    ]
+
+
+def test_delete_event_instance_excludes_it_and_drops_its_override(
+    series: tuple[CaldavBackend, MagicMock],
+) -> None:
+    backend, raw = series
+    backend.delete_event("series", recurrence_id=datetime(2026, 10, 27, 8, tzinfo=UTC))
+    backend.delete_event("series", recurrence_id=datetime(2026, 11, 10, 8, tzinfo=UTC))
+
+    assert [start.day for _, start in _instances(raw.data)] == [20, 3, 17]
+    assert "Moved" not in raw.data
+
+
+def test_unknown_recurrence_id_is_rejected(series: tuple[CaldavBackend, MagicMock]) -> None:
+    backend, raw = series
+    with pytest.raises(ValueError, match="no instance"):
+        backend.delete_event("series", recurrence_id=datetime(2026, 10, 21, 8, tzinfo=UTC))
+    raw.save.assert_not_called()
+
+
+def test_create_event_with_rrule() -> None:
+    cal = _mock_cal()
+    with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
+        MockClient.return_value.principal.return_value.calendars.return_value = [cal]
+        _make_backend().create_event(
+            "Gym",
+            datetime(2026, 10, 20, 18, tzinfo=UTC),
+            datetime(2026, 10, 20, 19, tzinfo=UTC),
+            rrule="FREQ=WEEKLY;COUNT=5",
+        )
+    assert "RRULE:FREQ=WEEKLY;COUNT=5" in cal.save_event.call_args[0][0]
+
+
+def test_list_events_sets_recurrence_id_only_for_series() -> None:
+    cal = _mock_cal()
+    single = _mock_ical_event(
+        start=datetime(2026, 11, 3, 9, tzinfo=UTC), end=datetime(2026, 11, 3, 10, tzinfo=UTC)
+    )
+    series = MagicMock(icalendar_instance=icalendar.Calendar.from_ical(_SERIES))
+    cal.search.return_value = [single, series]
+    with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
+        MockClient.return_value.principal.return_value.calendars.return_value = [cal]
+        events = _make_backend().list_events(
+            datetime(2026, 11, 3, tzinfo=UTC), datetime(2026, 11, 4, tzinfo=UTC)
+        )
+    assert {e.uid: e.recurrence_id for e in events} == {
+        "uid-1": None,
+        "series": datetime(2026, 11, 3, 8, tzinfo=UTC),
+    }
 
 
 # ---------------------------------------------------------------------------
