@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
 from unittest.mock import MagicMock, patch
+from zoneinfo import ZoneInfo
 
 import icalendar
 import pytest
@@ -53,32 +54,8 @@ def _mock_ical_event(
     cal_obj.add_component(event_comp_real)
     ical_str = cal_obj.to_ical().decode("utf-8")
 
-    # Keep the mock component for _parse_event (reads via icalendar_component)
-    comp = MagicMock()
-    comp.get = lambda key, default=None: {  # type: ignore[misc]
-        "uid": uid,
-        "summary": summary,
-        "dtstart": MagicMock(dt=start),
-        "dtend": MagicMock(dt=end),
-        "description": None,
-        "location": None,
-    }.get(key, default)
-
-    alarm_mocks: list[MagicMock] = []
-    for minutes in alarm_offsets_minutes or []:
-        alarm_comp = MagicMock()
-        alarm_comp.name = "VALARM"
-        trigger_mock = MagicMock()
-        trigger_mock.dt = timedelta(minutes=-minutes)
-        alarm_comp.get = lambda key, default=None, _t=trigger_mock: {  # type: ignore[misc]
-            "TRIGGER": _t,
-        }.get(key, default)
-        alarm_mocks.append(alarm_comp)
-
-    comp.walk.return_value = [comp] + alarm_mocks
-
     event = MagicMock()
-    event.icalendar_component = comp
+    event.icalendar_component = event_comp_real
     event.data = ical_str
     return event
 
@@ -168,8 +145,7 @@ def test_create_event() -> None:
 
     cal.save_event.assert_called_once()
     call_arg = cal.save_event.call_args[0][0]
-    assert isinstance(call_arg, bytes)
-    assert b"Team sync" in call_arg
+    assert "Team sync" in call_arg
 
     assert isinstance(event, CalendarEvent)
     assert event.summary == "Team sync"
@@ -177,6 +153,31 @@ def test_create_event() -> None:
     assert event.end == end
     assert event.description == "Weekly standup"
     assert event.backend_name == "test"
+
+
+def test_offset_times_are_written_with_tzid_and_returned_in_default_tz(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("mcp_calendar.calendar.TZ", ZoneInfo("Europe/Berlin"))
+    backend = _make_backend()
+    cal = _mock_cal()
+    start = datetime.fromisoformat("2026-11-04T10:00:00+02:00")
+
+    with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
+        MockClient.return_value.principal.return_value.calendars.return_value = [cal]
+        event = backend.create_event("Dentist", start, start + timedelta(hours=1))
+
+    raw: str = cal.save_event.call_args[0][0]
+    assert "DTSTART;TZID=Europe/Berlin:20261104T090000" in raw
+    assert "BEGIN:VTIMEZONE" in raw
+    assert event.to_dict()["start"] == "2026-11-04T09:00:00+01:00"
+
+
+def test_floating_times_are_read_in_default_tz(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("mcp_calendar.calendar.TZ", ZoneInfo("Europe/Berlin"))
+    raw = _mock_ical_event(start=datetime(2026, 10, 20, 10), end=datetime(2026, 10, 20, 11))
+    event = _make_backend()._parse_event(raw.icalendar_component, "Work")
+    assert event.to_dict()["start"] == "2026-10-20T10:00:00+02:00"
 
 
 # ---------------------------------------------------------------------------
@@ -413,9 +414,9 @@ def test_create_task() -> None:
         task = backend.create_task(summary="Write tests")
 
     cal.save_event.assert_called_once()
-    raw: bytes = cal.save_event.call_args[0][0]
-    assert b"VTODO" in raw
-    assert b"Write tests" in raw
+    raw: str = cal.save_event.call_args[0][0]
+    assert "VTODO" in raw
+    assert "Write tests" in raw
 
     assert isinstance(task, CalendarTask)
     assert task.summary == "Write tests"
@@ -437,11 +438,11 @@ def test_create_task_with_optional_fields() -> None:
             priority=1,
         )
 
-    raw: bytes = cal.save_event.call_args[0][0]
-    assert b"Important task" in raw
-    assert b"Must not forget" in raw
-    assert b"20240801" in raw
-    assert b"PRIORITY:1" in raw
+    raw: str = cal.save_event.call_args[0][0]
+    assert "Important task" in raw
+    assert "Must not forget" in raw
+    assert "20240801" in raw
+    assert "PRIORITY:1" in raw
 
     assert task.description == "Must not forget"
     assert task.due == due
@@ -457,8 +458,8 @@ def test_create_task_with_datetime_due() -> None:
         MockClient.return_value.principal.return_value.calendars.return_value = [cal]
         task = backend.create_task(summary="Standup", due=due_dt)
 
-    raw: bytes = cal.save_event.call_args[0][0]
-    assert b"20240801T090000Z" in raw
+    raw: str = cal.save_event.call_args[0][0]
+    assert "20240801T090000Z" in raw
     assert task.due == due_dt
 
 
@@ -968,7 +969,7 @@ def test_calendar_event_default_alarms_empty() -> None:
 def test_parse_event_reads_valarm() -> None:
     backend = _make_backend()
     raw = _mock_ical_event(alarm_offsets_minutes=[15])
-    event = backend._parse_event(raw, "Work")
+    event = backend._parse_event(raw.icalendar_component, "Work")
     assert len(event.alarms) == 1
     assert event.alarms[0] == timedelta(minutes=15)
 
@@ -976,7 +977,7 @@ def test_parse_event_reads_valarm() -> None:
 def test_parse_event_multiple_valarms() -> None:
     backend = _make_backend()
     raw = _mock_ical_event(alarm_offsets_minutes=[5, 15, 30])
-    event = backend._parse_event(raw, "Work")
+    event = backend._parse_event(raw.icalendar_component, "Work")
     assert sorted(a.total_seconds() for a in event.alarms) == [
         timedelta(minutes=5).total_seconds(),
         timedelta(minutes=15).total_seconds(),
@@ -987,30 +988,8 @@ def test_parse_event_multiple_valarms() -> None:
 def test_parse_event_no_valarm_gives_empty_alarms() -> None:
     backend = _make_backend()
     raw = _mock_ical_event()
-    event = backend._parse_event(raw, "Work")
+    event = backend._parse_event(raw.icalendar_component, "Work")
     assert event.alarms == []
-
-
-# ---------------------------------------------------------------------------
-# VALARM writing (_build_ical)
-# ---------------------------------------------------------------------------
-
-
-def test_build_ical_with_alarms() -> None:
-    backend = _make_backend()
-    start = datetime(2024, 7, 1, 9, 0, tzinfo=UTC)
-    end = datetime(2024, 7, 1, 10, 0, tzinfo=UTC)
-    ical = backend._build_ical("uid-1", "Test", start, end, None, None, [timedelta(minutes=15)])
-    assert b"VALARM" in ical
-    assert b"TRIGGER" in ical
-
-
-def test_build_ical_without_alarms_has_no_valarm() -> None:
-    backend = _make_backend()
-    start = datetime(2024, 7, 1, 9, 0, tzinfo=UTC)
-    end = datetime(2024, 7, 1, 10, 0, tzinfo=UTC)
-    ical = backend._build_ical("uid-1", "Test", start, end, None, None)
-    assert b"VALARM" not in ical
 
 
 # ---------------------------------------------------------------------------
@@ -1033,8 +1012,8 @@ def test_create_event_with_alarms() -> None:
             alarms=[timedelta(minutes=15)],
         )
 
-    raw: bytes = cal.save_event.call_args[0][0]
-    assert b"VALARM" in raw
+    raw: str = cal.save_event.call_args[0][0]
+    assert "VALARM" in raw
     assert event.alarms == [timedelta(minutes=15)]
 
 
@@ -1048,8 +1027,8 @@ def test_create_event_without_alarms_no_valarm() -> None:
         MockClient.return_value.principal.return_value.calendars.return_value = [cal]
         event = backend.create_event(summary="Meeting", start=start, end=end)
 
-    raw: bytes = cal.save_event.call_args[0][0]
-    assert b"VALARM" not in raw
+    raw: str = cal.save_event.call_args[0][0]
+    assert "VALARM" not in raw
     assert event.alarms == []
 
 

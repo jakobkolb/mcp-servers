@@ -1,6 +1,17 @@
+import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
+
+# Floating/naive times are read as this zone; all times are written and returned in it.
+TZ = ZoneInfo(os.environ.get("CALENDAR_TZ", "UTC"))
+
+
+def localize(value: datetime | date) -> datetime | date:
+    if not isinstance(value, datetime):
+        return value
+    return value.replace(tzinfo=TZ) if value.tzinfo is None else value.astimezone(TZ)
 
 
 class UnsupportedOperationError(Exception):
