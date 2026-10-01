@@ -76,7 +76,9 @@ class CalendarBackend(ABC):
     def list_calendars(self) -> list[str]: ...
 
     @abstractmethod
-    def list_events(self, start: datetime, end: datetime) -> list[CalendarEvent]: ...
+    def list_events(
+        self, start: datetime, end: datetime, calendar_name: str | None = None
+    ) -> list[CalendarEvent]: ...
 
     @abstractmethod
     def create_event(
@@ -106,7 +108,9 @@ class CalendarBackend(ABC):
     def delete_event(self, uid: str) -> None: ...
 
     @abstractmethod
-    def get_freebusy(self, start: datetime, end: datetime) -> list[tuple[datetime, datetime]]: ...
+    def get_freebusy(
+        self, start: datetime, end: datetime, calendar_name: str | None = None
+    ) -> list[tuple[datetime, datetime]]: ...
 
     @abstractmethod
     def create_task(

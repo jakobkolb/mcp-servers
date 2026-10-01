@@ -9,11 +9,11 @@ An MCP server providing a unified view of iCloud, Google, and Nextcloud calendar
 | Tool | Description |
 |------|-------------|
 | `calendar_list_calendars` | List all available calendars grouped by backend |
-| `calendar_list_events` | List events within a date/time range (optional backend filter) |
+| `calendar_list_events` | List events within a date/time range (optional backend and calendar filter) |
 | `calendar_create_event` | Create a new event on a specific backend |
 | `calendar_update_event` | Update an existing event by UID |
 | `calendar_delete_event` | Delete an event by UID |
-| `calendar_get_freebusy` | Get busy time slots within a date/time range |
+| `calendar_get_freebusy` | Get busy time slots within a date/time range (optional backend and calendar filter) |
 
 ### Tasks (VTODO)
 

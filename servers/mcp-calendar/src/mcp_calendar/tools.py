@@ -80,6 +80,10 @@ class ListEventsToolHandler(ToolHandler):
                         "type": "string",
                         "description": "Optional backend name to filter results.",
                     },
+                    "calendar_name": {
+                        "type": "string",
+                        "description": "Optional calendar name to filter results.",
+                    },
                 },
                 "required": ["start", "end"],
             },
@@ -99,7 +103,7 @@ class ListEventsToolHandler(ToolHandler):
         for backend in _backends:
             if backend_filter is not None and backend.name != backend_filter:
                 continue
-            events.extend(backend.list_events(start, end))
+            events.extend(backend.list_events(start, end, args.get("calendar_name")))
 
         events.sort(key=lambda e: e.start.isoformat())
         return [TextContent(type="text", text=json.dumps([e.to_dict() for e in events], indent=2))]
@@ -339,6 +343,10 @@ class GetFreeBusyToolHandler(ToolHandler):
                         "type": "string",
                         "description": "Optional backend name to filter results.",
                     },
+                    "calendar_name": {
+                        "type": "string",
+                        "description": "Optional calendar name to filter results.",
+                    },
                 },
                 "required": ["start", "end"],
             },
@@ -358,7 +366,7 @@ class GetFreeBusyToolHandler(ToolHandler):
         for backend in _backends:
             if backend_filter is not None and backend.name != backend_filter:
                 continue
-            slots = backend.get_freebusy(start, end)
+            slots = backend.get_freebusy(start, end, args.get("calendar_name"))
             result[backend.name] = [
                 [slot_start.isoformat(), slot_end.isoformat()] for slot_start, slot_end in slots
             ]

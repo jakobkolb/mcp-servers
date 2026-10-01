@@ -170,6 +170,18 @@ def test_list_events_includes_in_progress_recurring_instance() -> None:
     ]
 
 
+def test_list_events_calendar_name_filter() -> None:
+    work, home = _mock_cal("Work"), _mock_cal("Home")
+    work.search.return_value = [_mock_ical_event()]
+    with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
+        MockClient.return_value.principal.return_value.calendars.return_value = [work, home]
+        events = _make_backend().list_events(
+            datetime(2024, 6, 1, tzinfo=UTC), datetime(2024, 6, 2, tzinfo=UTC), "Work"
+        )
+    assert [e.calendar_name for e in events] == ["Work"]
+    home.search.assert_not_called()
+
+
 # ---------------------------------------------------------------------------
 # create_event
 # ---------------------------------------------------------------------------
