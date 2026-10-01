@@ -11,7 +11,6 @@ import icalendar
 import recurring_ical_events
 
 from .calendar import (
-    CalendarBackend,
     CalendarEvent,
     CalendarTask,
     UnsupportedOperationError,
@@ -93,7 +92,7 @@ def _new_calendar(comp: icalendar.Component) -> str:
     return _to_ical(cal)
 
 
-class CaldavBackend(CalendarBackend):
+class CaldavBackend:
     """Shared CalDAV implementation used by all three backend subclasses."""
 
     _url: str
@@ -414,7 +413,7 @@ class CaldavBackend(CalendarBackend):
 
             # Parse and patch in-place to preserve any custom properties
             raw_cal = icalendar.Calendar.from_ical(task_obj.data)
-            vtodo = next(c for c in raw_cal.walk() if c.name == "VTODO")
+            vtodo = raw_cal.todos[0]
 
             _set(
                 vtodo,

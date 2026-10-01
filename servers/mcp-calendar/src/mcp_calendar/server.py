@@ -40,7 +40,7 @@ _config_path = os.getenv(
 try:
     _config = load_config(_config_path)
     _backends = build_backends(_config)
-    tools.set_backends(_backends)  # type: ignore[arg-type]
+    tools.set_backends(_backends)
 except FileNotFoundError:
     logger.warning("Config file not found at %s — no backends loaded", _config_path)
 except Exception:

@@ -7,9 +7,9 @@ from typing import Any
 
 from mcp.types import EmbeddedResource, ImageContent, TextContent, Tool
 
-from .calendar import CalendarBackend
+from .backends import CaldavBackend
 
-_backends: list[CalendarBackend] = []
+_backends: list[CaldavBackend] = []
 
 ToolResult = Sequence[TextContent | ImageContent | EmbeddedResource]
 
@@ -19,7 +19,7 @@ def _time(value: str) -> datetime | date:
     return datetime.fromisoformat(value) if "T" in value else date.fromisoformat(value)
 
 
-def set_backends(backends: list[CalendarBackend]) -> None:
+def set_backends(backends: list[CaldavBackend]) -> None:
     global _backends
     _backends = backends
 
@@ -339,8 +339,8 @@ class DeleteEventToolHandler(ToolHandler):
         if backend is None:
             raise RuntimeError(f"Backend '{backend_name}' not found")
 
-        rid = args.get("recurrence_id")
-        backend.delete_event(args["uid"], _time(rid) if rid is not None else None)
+        rid = _time(args["recurrence_id"]) if "recurrence_id" in args else None
+        backend.delete_event(args["uid"], rid)
         return [TextContent(type="text", text=f"Successfully deleted event {args['uid']}")]
 
 
