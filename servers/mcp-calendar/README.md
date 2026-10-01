@@ -15,6 +15,12 @@ An MCP server providing a unified view of iCloud, Google, and Nextcloud calendar
 | `calendar_delete_event` | Delete an event by UID |
 | `calendar_get_freebusy` | Get busy time slots within a date/time range (optional backend and calendar filter) |
 
+### Recurring events
+
+- `calendar_create_event` accepts an `rrule` (RFC 5545, without the `RRULE:` prefix), e.g. `FREQ=WEEKLY;BYDAY=TU;COUNT=5`.
+- `calendar_list_events` returns each instance of a series separately, with its `recurrence_id` (`null` for single events).
+- Pass that `recurrence_id` to `calendar_update_event` / `calendar_delete_event` to change or delete just that instance. Without it, updates apply to the whole series (time changes are rejected there) and deletes remove the series.
+
 ### Tasks (VTODO)
 
 | Tool | Description |

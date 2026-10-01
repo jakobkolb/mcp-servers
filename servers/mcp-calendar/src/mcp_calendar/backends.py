@@ -49,6 +49,33 @@ def _set_alarms(event: icalendar.Event, alarms: list[timedelta]) -> None:
         event.add_component(alarm)
 
 
+def _master(cal: icalendar.Calendar) -> icalendar.Event:
+    return next((e for e in cal.events if "RECURRENCE-ID" not in e), cal.events[0])
+
+
+def _detach_instance(cal: icalendar.Calendar, recurrence_id: datetime | date) -> icalendar.Event:
+    """Turn one instance of a series into a standalone override component and return it.
+
+    The expanded occurrence already merges the master with any existing override, so it
+    replaces that override (if any) as-is.
+    """
+    occurrences = recurring_ical_events.of(cal).between(
+        recurrence_id, recurrence_id + timedelta(days=1)
+    )
+    instance = next(
+        (o for o in occurrences if localize(o["RECURRENCE-ID"].dt) == localize(recurrence_id)),
+        None,
+    )
+    if instance is None:
+        raise ValueError(f"Series has no instance at {recurrence_id.isoformat()}")
+    rid = instance["RECURRENCE-ID"].dt
+    cal.subcomponents = [
+        c for c in cal.subcomponents if not ("RECURRENCE-ID" in c and c["RECURRENCE-ID"].dt == rid)
+    ]
+    cal.add_component(instance)
+    return instance
+
+
 def _to_ical(cal: icalendar.Calendar) -> str:
     cal.add_missing_timezones()
     return cal.to_ical().decode("utf-8")
@@ -147,6 +174,7 @@ class CaldavBackend(CalendarBackend):
             backend_name=self.name,
             alarms=[abs(t) for t in triggers if isinstance(t, timedelta)],
             transparent=comp.get("transp") == "TRANSPARENT",
+            recurrence_id=localize(comp["RECURRENCE-ID"].dt) if "RECURRENCE-ID" in comp else None,
         )
 
     def _parse_task(self, comp: icalendar.Todo, cal_name: str) -> CalendarTask:
@@ -208,10 +236,13 @@ class CaldavBackend(CalendarBackend):
                 # filters by start time only; this one applies overrides and overlap.
                 for obj in cal.search(start=start, end=end, event=True, expand=False):
                     try:
-                        for occurrence in recurring_ical_events.of(obj.icalendar_instance).between(
-                            start, end
-                        ):
-                            events.append(self._parse_event(occurrence, cal_name))
+                        series = obj.icalendar_instance
+                        recurring = any("RRULE" in e or "RDATE" in e for e in series.events)
+                        for occurrence in recurring_ical_events.of(series).between(start, end):
+                            event = self._parse_event(occurrence, cal_name)
+                            if not recurring:
+                                event.recurrence_id = None
+                            events.append(event)
                     except Exception:
                         logger.exception("Failed to parse event in calendar %s", cal_name)
             except Exception:
@@ -227,6 +258,7 @@ class CaldavBackend(CalendarBackend):
         description: str | None = None,
         location: str | None = None,
         alarms: list[timedelta] | None = None,
+        rrule: str | None = None,
     ) -> CalendarEvent:
         _validate(summary, start, end)
         calendars = self._get_calendars()
@@ -249,6 +281,8 @@ class CaldavBackend(CalendarBackend):
             location=location,
         )
         _set_alarms(event, alarms or [])
+        if rrule is not None:
+            event.add("rrule", icalendar.vRecur.from_ical(rrule))
         target.save_event(_new_calendar(event))
         return self._parse_event(event, target.name or "")
 
@@ -261,6 +295,7 @@ class CaldavBackend(CalendarBackend):
         description: str | None = None,
         location: str | None = None,
         alarms: list[timedelta] | None = None,
+        recurrence_id: datetime | date | None = None,
     ) -> CalendarEvent:
         for cal in self._get_calendars():
             try:
@@ -270,13 +305,16 @@ class CaldavBackend(CalendarBackend):
 
             # Patch in-place to preserve custom properties (RRULE, ATTENDEE, etc.)
             raw_cal = icalendar.Calendar.from_ical(event.data)
-            vevent = raw_cal.events[0]
+            if recurrence_id is not None:
+                vevent = _detach_instance(raw_cal, recurrence_id)
+            else:
+                vevent = _master(raw_cal)
             if (start is not None or end is not None) and "RRULE" in vevent:
                 # Rewriting DTSTART of a master re-anchors the whole series and drops
                 # the instances before it.
                 raise ValueError(
                     f"Event '{uid}' is recurring; changing its start/end would move the whole "
-                    "series. Delete and recreate it, or edit the instance in a calendar app."
+                    "series. Pass recurrence_id to move a single instance."
                 )
             if start is not None and end is None:
                 end = start + (vevent.end - vevent.start)  # move, keeping the duration
@@ -297,14 +335,22 @@ class CaldavBackend(CalendarBackend):
 
         raise ValueError(f"Event with uid '{uid}' not found in any calendar")
 
-    def delete_event(self, uid: str) -> None:
+    def delete_event(self, uid: str, recurrence_id: datetime | date | None = None) -> None:
         for cal in self._get_calendars():
             try:
                 event = self._find_event_by_uid(cal, uid)
-                event.delete()
-                return
             except Exception:
                 continue
+            if recurrence_id is None:
+                event.delete()
+                return
+            raw_cal = icalendar.Calendar.from_ical(event.data)
+            instance = _detach_instance(raw_cal, recurrence_id)
+            raw_cal.subcomponents.remove(instance)
+            _master(raw_cal).add("exdate", instance["RECURRENCE-ID"].dt)
+            event.data = _to_ical(raw_cal)
+            event.save()
+            return
         raise ValueError(f"Event with uid '{uid}' not found in any calendar")
 
     def create_task(
