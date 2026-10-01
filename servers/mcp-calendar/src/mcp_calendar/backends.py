@@ -6,6 +6,7 @@ from datetime import UTC, date, datetime, timedelta
 
 import caldav
 import icalendar
+import recurring_ical_events
 
 from .calendar import (
     CalendarBackend,
@@ -188,10 +189,14 @@ class CaldavBackend(CalendarBackend):
         for cal in self._get_calendars():
             try:
                 cal_name: str = cal.name or ""
-                raw_events = cal.date_search(start=start, end=end, expand=True)
-                for e in raw_events:
+                # Expand client-side: caldav's expansion keeps replaced instances and
+                # filters by start time only; this one applies overrides and overlap.
+                for obj in cal.search(start=start, end=end, event=True, expand=False):
                     try:
-                        events.append(self._parse_event(e.icalendar_component, cal_name))
+                        for occurrence in recurring_ical_events.of(obj.icalendar_instance).between(
+                            start, end
+                        ):
+                            events.append(self._parse_event(occurrence, cal_name))
                     except Exception:
                         logger.exception("Failed to parse event in calendar %s", cal_name)
             except Exception:
