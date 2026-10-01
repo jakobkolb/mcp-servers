@@ -333,7 +333,7 @@ class CaldavBackend(CalendarBackend):
             event.save()
             return self._parse_event(vevent, getattr(cal, "name", "") or "")
 
-        raise ValueError(f"Event with uid '{uid}' not found in any calendar")
+        raise ValueError(f"Event with uid '{uid}' not found in backend '{self.name}'")
 
     def delete_event(self, uid: str, recurrence_id: datetime | date | None = None) -> None:
         for cal in self._get_calendars():
@@ -351,7 +351,7 @@ class CaldavBackend(CalendarBackend):
             event.data = _to_ical(raw_cal)
             event.save()
             return
-        raise ValueError(f"Event with uid '{uid}' not found in any calendar")
+        raise ValueError(f"Event with uid '{uid}' not found in backend '{self.name}'")
 
     def create_task(
         self,
@@ -416,7 +416,7 @@ class CaldavBackend(CalendarBackend):
             task_obj.save()
             return self._parse_task(vtodo, getattr(col, "name", "") or "")
 
-        raise ValueError(f"Task with uid '{uid}' not found in any collection")
+        raise ValueError(f"Task with uid '{uid}' not found in backend '{self.name}'")
 
     def delete_task(self, uid: str) -> None:
         for col in self._get_task_collections():
@@ -426,7 +426,7 @@ class CaldavBackend(CalendarBackend):
                 return
             except Exception:
                 continue
-        raise ValueError(f"Task with uid '{uid}' not found in any collection")
+        raise ValueError(f"Task with uid '{uid}' not found in backend '{self.name}'")
 
     def list_tasks(
         self, calendar_name: str | None = None, include_completed: bool = False

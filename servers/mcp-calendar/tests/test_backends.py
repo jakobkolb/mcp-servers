@@ -862,6 +862,16 @@ def test_create_task_in_event_only_calendar_says_so() -> None:
             _make_backend().create_task("x", calendar_name="Events")
 
 
+def test_not_found_names_the_backend() -> None:
+    cal = _mock_cal()
+    cal.event_by_uid.side_effect = Exception("404")
+    cal.events.return_value = []
+    with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
+        MockClient.return_value.principal.return_value.calendars.return_value = [cal]
+        with pytest.raises(ValueError, match="not found in backend 'personal'"):
+            _make_backend("personal").update_event("uid-x", summary="x")
+
+
 def test_delete_task() -> None:
     backend = _make_backend()
     cal = _mock_cal("Tasks")
