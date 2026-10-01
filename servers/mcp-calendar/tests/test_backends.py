@@ -180,6 +180,17 @@ def test_floating_times_are_read_in_default_tz(monkeypatch: pytest.MonkeyPatch) 
     assert event.to_dict()["start"] == "2026-10-20T10:00:00+02:00"
 
 
+def test_missing_dtend_follows_rfc5545_instead_of_now() -> None:
+    cal = icalendar.Calendar.from_ical(
+        "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:a\r\nDTSTART;VALUE=DATE:20270301\r\nEND:VEVENT\r\n"
+        "BEGIN:VEVENT\r\nUID:b\r\nDTSTART:20270301T100000Z\r\nDURATION:PT1H\r\nEND:VEVENT\r\n"
+        "END:VCALENDAR\r\n"
+    )
+    all_day, timed = (_make_backend()._parse_event(e, "Work") for e in cal.events)
+    assert all_day.end == date(2027, 3, 2)
+    assert timed.end == datetime(2027, 3, 1, 11, tzinfo=UTC)
+
+
 # ---------------------------------------------------------------------------
 # update_event
 # ---------------------------------------------------------------------------
