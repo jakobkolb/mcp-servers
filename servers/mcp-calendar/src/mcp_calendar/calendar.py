@@ -29,6 +29,7 @@ class CalendarEvent:
     calendar_name: str = ""
     backend_name: str = ""
     alarms: list[timedelta] = field(default_factory=list)
+    transparent: bool = False  # TRANSP:TRANSPARENT, i.e. doesn't block time
 
     def to_dict(self) -> dict[str, object]:
         return {

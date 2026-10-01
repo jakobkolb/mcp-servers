@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
+from typing import cast
 
 import caldav
 import icalendar
@@ -136,6 +137,7 @@ class CaldavBackend(CalendarBackend):
             calendar_name=cal_name,
             backend_name=self.name,
             alarms=[abs(t) for t in triggers if isinstance(t, timedelta)],
+            transparent=comp.get("transp") == "TRANSPARENT",
         )
 
     def _parse_task(self, comp: icalendar.Todo, cal_name: str) -> CalendarTask:
@@ -391,17 +393,24 @@ class CaldavBackend(CalendarBackend):
     def get_freebusy(
         self, start: datetime, end: datetime, calendar_name: str | None = None
     ) -> list[tuple[datetime, datetime]]:
-        events = self.list_events(start, end, calendar_name)
-        result: list[tuple[datetime, datetime]] = []
-        for ev in events:
-            ev_start = ev.start
-            ev_end = ev.end
-            if not isinstance(ev_start, datetime):
-                ev_start = datetime(ev_start.year, ev_start.month, ev_start.day, tzinfo=UTC)
-            if not isinstance(ev_end, datetime):
-                ev_end = datetime(ev_end.year, ev_end.month, ev_end.day, tzinfo=UTC)
-            result.append((ev_start, ev_end))
-        return result
+        def as_datetime(value: datetime | date) -> datetime:
+            # All-day dates become local midnight; datetimes are already localized.
+            if isinstance(value, datetime):
+                return value
+            return cast(datetime, localize(datetime.combine(value, time())))
+
+        busy = sorted(
+            (as_datetime(ev.start), as_datetime(ev.end))
+            for ev in self.list_events(start, end, calendar_name)
+            if not ev.transparent
+        )
+        merged: list[tuple[datetime, datetime]] = []
+        for slot_start, slot_end in busy:
+            if merged and slot_start <= merged[-1][1]:
+                merged[-1] = (merged[-1][0], max(merged[-1][1], slot_end))
+            else:
+                merged.append((slot_start, slot_end))
+        return merged
 
 
 class ICloudBackend(CaldavBackend):
