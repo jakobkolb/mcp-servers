@@ -30,6 +30,15 @@ def _set(comp: icalendar.Component, **props: object) -> None:
         comp.add(key, localize(value) if isinstance(value, date) else value)
 
 
+def _validate(summary: str | None, start: datetime | date, end: datetime | date) -> None:
+    if summary is not None and not summary.strip():
+        raise ValueError("summary must not be empty")
+    if isinstance(start, datetime) != isinstance(end, datetime):
+        raise ValueError("start and end must both be dates (all-day) or both datetimes")
+    if localize(end) <= localize(start):
+        raise ValueError(f"end ({end.isoformat()}) must be after start ({start.isoformat()})")
+
+
 def _set_alarms(event: icalendar.Event, alarms: list[timedelta]) -> None:
     event.subcomponents = [c for c in event.subcomponents if c.name != "VALARM"]
     for offset in alarms:
@@ -219,6 +228,7 @@ class CaldavBackend(CalendarBackend):
         location: str | None = None,
         alarms: list[timedelta] | None = None,
     ) -> CalendarEvent:
+        _validate(summary, start, end)
         calendars = self._get_calendars()
         if calendar_name is not None:
             target = next((c for c in calendars if c.name == calendar_name), None)
@@ -261,6 +271,9 @@ class CaldavBackend(CalendarBackend):
             # Patch in-place to preserve custom properties (RRULE, ATTENDEE, etc.)
             raw_cal = icalendar.Calendar.from_ical(event.data)
             vevent = raw_cal.events[0]
+            if start is not None and end is None:
+                end = start + (vevent.end - vevent.start)  # move, keeping the duration
+            _validate(summary, start or vevent.start, end or vevent.end)
             _set(
                 vevent,
                 summary=summary,
