@@ -271,6 +271,13 @@ class CaldavBackend(CalendarBackend):
             # Patch in-place to preserve custom properties (RRULE, ATTENDEE, etc.)
             raw_cal = icalendar.Calendar.from_ical(event.data)
             vevent = raw_cal.events[0]
+            if (start is not None or end is not None) and "RRULE" in vevent:
+                # Rewriting DTSTART of a master re-anchors the whole series and drops
+                # the instances before it.
+                raise ValueError(
+                    f"Event '{uid}' is recurring; changing its start/end would move the whole "
+                    "series. Delete and recreate it, or edit the instance in a calendar app."
+                )
             if start is not None and end is None:
                 end = start + (vevent.end - vevent.start)  # move, keeping the duration
             _validate(summary, start or vevent.start, end or vevent.end)

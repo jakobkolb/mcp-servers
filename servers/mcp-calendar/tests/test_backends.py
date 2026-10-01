@@ -312,6 +312,18 @@ def test_update_event_rejects_end_before_existing_start() -> None:
     raw.save.assert_not_called()
 
 
+def test_update_event_rejects_time_change_on_series() -> None:
+    cal = _mock_cal("Work")
+    raw = MagicMock(data=_SERIES)
+    cal.event_by_uid.return_value = raw
+    with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
+        MockClient.return_value.principal.return_value.calendars.return_value = [cal]
+        with pytest.raises(ValueError, match="recurring"):
+            _make_backend().update_event("series", start=datetime(2026, 11, 4, 9, tzinfo=UTC))
+        _make_backend().update_event("series", summary="Renamed")  # non-time fields still fine
+    assert "SUMMARY:Renamed" in raw.data
+
+
 # ---------------------------------------------------------------------------
 # delete_event
 # ---------------------------------------------------------------------------
