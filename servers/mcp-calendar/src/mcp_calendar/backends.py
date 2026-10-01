@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import date, datetime, time, timedelta
+from time import monotonic
 from typing import cast
 
 import caldav
@@ -19,6 +20,8 @@ from .calendar import (
 from .config import GoogleConfig, ICloudConfig, NextcloudConfig
 
 logger = logging.getLogger(__name__)
+
+CALENDAR_LIST_TTL = 300  # seconds; calendars added or shared later show up after this
 
 
 def _set(comp: icalendar.Component, **props: object) -> None:
@@ -118,6 +121,7 @@ class CaldavBackend(CalendarBackend):
         self._task_filter = task_filter
         self._cached_client: caldav.DAVClient | None = None
         self._cached_all_calendars: list[caldav.Calendar] | None = None
+        self._calendars_fetched_at = 0.0
 
     def _client(self) -> caldav.DAVClient:
         if self._cached_client is None:
@@ -130,13 +134,21 @@ class CaldavBackend(CalendarBackend):
         return self._cached_client
 
     def _all_calendars(self) -> list[caldav.Calendar]:
-        if self._cached_all_calendars is None:
+        stale = monotonic() - self._calendars_fetched_at > CALENDAR_LIST_TTL
+        if self._cached_all_calendars is None or stale:
             try:
                 self._cached_all_calendars = self._client().principal().calendars()
             except Exception:
                 self._cached_client = None
                 self._cached_all_calendars = None
                 raise
+            self._calendars_fetched_at = monotonic()
+            logger.info(
+                "%s: discovered calendars %s (filter: %s)",
+                self.name,
+                [c.name for c in self._cached_all_calendars],
+                self._calendar_filter,
+            )
         return self._cached_all_calendars
 
     def _get_task_collections(self) -> list[caldav.Calendar]:
