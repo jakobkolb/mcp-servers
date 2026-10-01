@@ -381,6 +381,44 @@ def test_update_event() -> None:
     assert updated.uid == uid
 
 
+def test_update_event_start_only_keeps_duration() -> None:
+    cal = _mock_cal("Work")
+    cal.event_by_uid.return_value = _mock_ical_event(
+        start=datetime(2024, 6, 1, 10, tzinfo=UTC), end=datetime(2024, 6, 1, 11, tzinfo=UTC)
+    )
+    with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
+        MockClient.return_value.principal.return_value.calendars.return_value = [cal]
+        updated = _make_backend().update_event("uid-1", start=datetime(2024, 6, 1, 12, tzinfo=UTC))
+    assert updated.end == datetime(2024, 6, 1, 13, tzinfo=UTC)
+
+
+@pytest.mark.parametrize(
+    ("summary", "start", "end", "error"),
+    [
+        ("A", datetime(2024, 6, 1, 10, tzinfo=UTC), datetime(2024, 6, 1, 9, tzinfo=UTC), "after"),
+        ("A", date(2024, 6, 1), date(2024, 6, 1), "after"),
+        ("A", date(2024, 6, 1), datetime(2024, 6, 2, tzinfo=UTC), "both"),
+        (" ", date(2024, 6, 1), date(2024, 6, 2), "summary"),
+    ],
+)
+def test_create_event_rejects_invalid_input(
+    summary: str, start: datetime | date, end: datetime | date, error: str
+) -> None:
+    with pytest.raises(ValueError, match=error):
+        _make_backend().create_event(summary, start, end)
+
+
+def test_update_event_rejects_end_before_existing_start() -> None:
+    cal = _mock_cal("Work")
+    raw = _mock_ical_event()
+    cal.event_by_uid.return_value = raw
+    with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
+        MockClient.return_value.principal.return_value.calendars.return_value = [cal]
+        with pytest.raises(ValueError, match="after"):
+            _make_backend().update_event("uid-1", end=datetime(2024, 6, 1, 9, tzinfo=UTC))
+    raw.save.assert_not_called()
+
+
 # ---------------------------------------------------------------------------
 # delete_event
 # ---------------------------------------------------------------------------
