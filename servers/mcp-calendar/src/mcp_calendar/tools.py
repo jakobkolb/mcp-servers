@@ -166,6 +166,13 @@ class CreateEventToolHandler(ToolHandler):
                         "items": {"type": "integer"},
                         "description": "Optional list of reminder offsets in minutes before start.",
                     },
+                    "rrule": {
+                        "type": "string",
+                        "description": (
+                            "Optional RFC 5545 recurrence rule without the 'RRULE:' prefix, "
+                            "e.g. FREQ=WEEKLY;BYDAY=TU;COUNT=5."
+                        ),
+                    },
                 },
                 "required": ["backend", "summary", "start", "end"],
             },
@@ -194,6 +201,7 @@ class CreateEventToolHandler(ToolHandler):
             description=args.get("description"),
             location=args.get("location"),
             alarms=alarms,
+            rrule=args.get("rrule"),
         )
         return [TextContent(type="text", text=json.dumps(event.to_dict(), indent=2))]
 
@@ -248,6 +256,13 @@ class UpdateEventToolHandler(ToolHandler):
                         "items": {"type": "integer"},
                         "description": "New list of reminder offsets in minutes before start.",
                     },
+                    "recurrence_id": {
+                        "type": "string",
+                        "description": (
+                            "Change only this instance of a recurring event: its recurrence_id "
+                            "from calendar_list_events. Omit to apply to the whole series."
+                        ),
+                    },
                 },
                 "required": ["uid", "backend"],
             },
@@ -277,6 +292,7 @@ class UpdateEventToolHandler(ToolHandler):
             description=args.get("description"),
             location=args.get("location"),
             alarms=alarms,
+            recurrence_id=_time(args["recurrence_id"]) if "recurrence_id" in args else None,
         )
         return [TextContent(type="text", text=json.dumps(event.to_dict(), indent=2))]
 
@@ -300,6 +316,13 @@ class DeleteEventToolHandler(ToolHandler):
                         "type": "string",
                         "description": "Name of the backend that owns the event.",
                     },
+                    "recurrence_id": {
+                        "type": "string",
+                        "description": (
+                            "Delete only this instance of a recurring event: its recurrence_id "
+                            "from calendar_list_events. Omit to apply to the whole series."
+                        ),
+                    },
                 },
                 "required": ["uid", "backend"],
             },
@@ -316,7 +339,8 @@ class DeleteEventToolHandler(ToolHandler):
         if backend is None:
             raise RuntimeError(f"Backend '{backend_name}' not found")
 
-        backend.delete_event(args["uid"])
+        rid = args.get("recurrence_id")
+        backend.delete_event(args["uid"], _time(rid) if rid is not None else None)
         return [TextContent(type="text", text=f"Successfully deleted event {args['uid']}")]
 
 

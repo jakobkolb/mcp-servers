@@ -239,6 +239,7 @@ def test_update_event(mocker: pytest.MonkeyPatch) -> None:
         description=None,
         location=None,
         alarms=None,
+        recurrence_id=None,
     )
     assert "Updated title" in _text(result)
 
@@ -282,7 +283,7 @@ def test_delete_event(mocker: pytest.MonkeyPatch) -> None:
     mocker.patch.object(tools, "_backends", [b])
 
     result = DeleteEventToolHandler().run_tool({"uid": "uid-1", "backend": "icloud"})
-    b.delete_event.assert_called_once_with("uid-1")
+    b.delete_event.assert_called_once_with("uid-1", None)
     assert "uid-1" in _text(result)
 
 
