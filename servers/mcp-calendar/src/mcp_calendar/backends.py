@@ -183,10 +183,14 @@ class CaldavBackend(CalendarBackend):
     def list_calendars(self) -> list[str]:
         return [c.name for c in self._get_calendars()]
 
-    def list_events(self, start: datetime, end: datetime) -> list[CalendarEvent]:
+    def list_events(
+        self, start: datetime, end: datetime, calendar_name: str | None = None
+    ) -> list[CalendarEvent]:
         start, end = localize(start), localize(end)
         events: list[CalendarEvent] = []
         for cal in self._get_calendars():
+            if calendar_name is not None and cal.name != calendar_name:
+                continue
             try:
                 cal_name: str = cal.name or ""
                 # Expand client-side: caldav's expansion keeps replaced instances and
@@ -384,8 +388,10 @@ class CaldavBackend(CalendarBackend):
                 logger.exception("Failed to list tasks in collection %s", getattr(col, "name", "?"))
         return tasks
 
-    def get_freebusy(self, start: datetime, end: datetime) -> list[tuple[datetime, datetime]]:
-        events = self.list_events(start, end)
+    def get_freebusy(
+        self, start: datetime, end: datetime, calendar_name: str | None = None
+    ) -> list[tuple[datetime, datetime]]:
+        events = self.list_events(start, end, calendar_name)
         result: list[tuple[datetime, datetime]] = []
         for ev in events:
             ev_start = ev.start
