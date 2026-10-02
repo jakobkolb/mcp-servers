@@ -1,9 +1,12 @@
 from __future__ import annotations
 
-from typing import Annotated, Literal
+from typing import TYPE_CHECKING, Annotated, Literal
 
 import yaml
 from pydantic import BaseModel, Field
+
+if TYPE_CHECKING:
+    from .backends import CaldavBackend
 
 
 class ICloudConfig(BaseModel):
@@ -47,12 +50,10 @@ def load_config(path: str) -> Config:
     return Config.model_validate(data)
 
 
-def build_backends(config: Config) -> list[object]:
-    # Import here to avoid circular imports; return type is list[CalendarBackend]
-    # but typed as list[object] to keep this module free of the backends dependency.
-    from .backends import GoogleBackend, ICloudBackend, NextcloudBackend
+def build_backends(config: Config) -> list[CaldavBackend]:
+    from .backends import GoogleBackend, ICloudBackend, NextcloudBackend  # circular at top level
 
-    backends: list[object] = []
+    backends: list[CaldavBackend] = []
     for cfg in config.calendars:
         if isinstance(cfg, ICloudConfig):
             backends.append(ICloudBackend(cfg))

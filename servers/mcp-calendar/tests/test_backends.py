@@ -10,7 +10,13 @@ from zoneinfo import ZoneInfo
 import icalendar
 import pytest
 import recurring_ical_events
-from mcp_calendar.backends import CaldavBackend, GoogleBackend, ICloudBackend, NextcloudBackend
+from mcp_calendar.backends import (
+    CALENDAR_LIST_TTL,
+    CaldavBackend,
+    GoogleBackend,
+    ICloudBackend,
+    NextcloudBackend,
+)
 from mcp_calendar.calendar import CalendarEvent, CalendarTask, UnsupportedOperationError
 from mcp_calendar.config import GoogleConfig, ICloudConfig, NextcloudConfig
 
@@ -1150,6 +1156,23 @@ def test_calendars_are_cached_across_calls() -> None:
         backend.list_events(start, end)
 
     MockClient.return_value.principal.return_value.calendars.assert_called_once()
+
+
+def test_calendar_list_is_refreshed_after_ttl() -> None:
+    backend = _make_backend()
+    with (
+        patch("mcp_calendar.backends.caldav.DAVClient") as MockClient,
+        patch("mcp_calendar.backends.monotonic") as clock,
+    ):
+        calendars = MockClient.return_value.principal.return_value.calendars
+        calendars.return_value = [_mock_cal("Work")]
+        clock.return_value = 1000.0
+        assert backend.list_calendars() == ["Work"]
+
+        calendars.return_value = [_mock_cal("Work"), _mock_cal("Privat")]
+        assert backend.list_calendars() == ["Work"]  # still cached
+        clock.return_value += CALENDAR_LIST_TTL + 1
+        assert backend.list_calendars() == ["Work", "Privat"]
 
 
 def test_cache_invalidated_on_connection_error() -> None:
