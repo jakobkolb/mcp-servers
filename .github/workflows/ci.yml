@@ -115,7 +115,8 @@ jobs:
           else
             CHANGED_PATHS=$(git diff --name-only "$PREV_TAG"..HEAD -- servers/)
             CHANGED=$(for s in $ALL_SERVERS; do
-              echo "$CHANGED_PATHS" | grep -q "^servers/$s/" && echo "$s"
+              # `if`, not `&&`: an unchanged last server would end the loop with status 1 and kill the step under -e
+              if echo "$CHANGED_PATHS" | grep -q "^servers/$s/"; then echo "$s"; fi
             done)
           fi
 
