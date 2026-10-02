@@ -508,6 +508,34 @@ def test_create_event_with_rrule() -> None:
     assert "RRULE:FREQ=WEEKLY;COUNT=5" in cal.save_event.call_args[0][0]
 
 
+@pytest.mark.parametrize(
+    "rrule",
+    ["nonsense", "", "COUNT=3", "FREQ=WEEKLY;FOO=1", "FREQ=BOGUS", "FREQ=DAILY;UNTIL=20270101"],
+)
+def test_create_event_rejects_invalid_rrule(rrule: str) -> None:
+    cal = _mock_cal()
+    with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
+        MockClient.return_value.principal.return_value.calendars.return_value = [cal]
+        with pytest.raises(ValueError, match="Invalid rrule"):
+            _make_backend().create_event(
+                "Gym",
+                datetime(2026, 10, 20, 18, tzinfo=UTC),
+                datetime(2026, 10, 20, 19, tzinfo=UTC),
+                rrule=rrule,
+            )
+    cal.save_event.assert_not_called()
+
+
+def test_create_event_accepts_rrule_prefix() -> None:
+    cal = _mock_cal()
+    with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
+        MockClient.return_value.principal.return_value.calendars.return_value = [cal]
+        _make_backend().create_event(
+            "Gym", date(2026, 10, 20), date(2026, 10, 21), rrule="RRULE:FREQ=DAILY;UNTIL=20261025"
+        )
+    assert "RRULE:FREQ=DAILY;UNTIL=20261025" in cal.save_event.call_args[0][0]
+
+
 def test_list_events_sets_recurrence_id_only_for_series() -> None:
     cal = _mock_cal()
     single = _mock_ical_event(
