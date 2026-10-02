@@ -67,6 +67,8 @@ calendars:
 
 Override the config path with the `CALENDAR_CONFIG` environment variable.
 
+Set `CALENDAR_TZ` to your IANA timezone (e.g. `Europe/Berlin`, default `UTC`). Events are written with that `TZID`, times without a UTC offset (in tool input or floating times on the server) are read in that zone, and all returned times carry an offset.
+
 ## Running with Docker
 
 ```bash

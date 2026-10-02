@@ -14,6 +14,11 @@ _backends: list[CalendarBackend] = []
 ToolResult = Sequence[TextContent | ImageContent | EmbeddedResource]
 
 
+def _time(value: str) -> datetime | date:
+    """YYYY-MM-DD is an all-day date; anything with a time is a datetime (naive = CALENDAR_TZ)."""
+    return datetime.fromisoformat(value) if "T" in value else date.fromisoformat(value)
+
+
 def set_backends(backends: list[CalendarBackend]) -> None:
     global _backends
     _backends = backends
@@ -55,7 +60,11 @@ class ListEventsToolHandler(ToolHandler):
     def get_tool_description(self) -> Tool:
         return Tool(
             name=self.name,
-            description="List calendar events within a date/time range across all backends.",
+            description=(
+                "List calendar events within a date/time range across all backends. "
+                "Times without a UTC offset are read in the server's CALENDAR_TZ; "
+                "all returned times carry an offset."
+            ),
             input_schema={
                 "type": "object",
                 "properties": {
@@ -106,7 +115,8 @@ class CreateEventToolHandler(ToolHandler):
             description=(
                 "Create a new calendar event on a specific backend. "
                 "Supports both timed events (ISO 8601 datetime) and all-day events "
-                "(YYYY-MM-DD date strings — omit the time component entirely)."
+                "(YYYY-MM-DD date strings — omit the time component entirely). "
+                "Times without a UTC offset are read in the server's CALENDAR_TZ."
             ),
             input_schema={
                 "type": "object",
@@ -167,12 +177,8 @@ class CreateEventToolHandler(ToolHandler):
         if backend is None:
             raise RuntimeError(f"Backend '{backend_name}' not found")
 
-        start_str: str = args["start"]
-        end_str: str = args["end"]
-        start = (
-            datetime.fromisoformat(start_str) if "T" in start_str else date.fromisoformat(start_str)
-        )
-        end = datetime.fromisoformat(end_str) if "T" in end_str else date.fromisoformat(end_str)
+        start = _time(args["start"])
+        end = _time(args["end"])
         alarms_raw: list[int] | None = args.get("alarms")
         alarms = [timedelta(minutes=m) for m in alarms_raw] if alarms_raw is not None else None
 
@@ -254,14 +260,8 @@ class UpdateEventToolHandler(ToolHandler):
         if backend is None:
             raise RuntimeError(f"Backend '{backend_name}' not found")
 
-        start: datetime | date | None = None
-        if "start" in args:
-            s = args["start"]
-            start = datetime.fromisoformat(s) if "T" in s else date.fromisoformat(s)
-        end: datetime | date | None = None
-        if "end" in args:
-            e = args["end"]
-            end = datetime.fromisoformat(e) if "T" in e else date.fromisoformat(e)
+        start = _time(args["start"]) if "start" in args else None
+        end = _time(args["end"]) if "end" in args else None
         alarms_raw: list[int] | None = args.get("alarms")
         alarms = [timedelta(minutes=m) for m in alarms_raw] if alarms_raw is not None else None
 
@@ -423,10 +423,7 @@ class CreateTaskToolHandler(ToolHandler):
         if backend is None:
             raise RuntimeError(f"Backend '{backend_name}' not found")
 
-        due: date | datetime | None = None
-        if "due" in args:
-            due_str: str = args["due"]
-            due = datetime.fromisoformat(due_str) if "T" in due_str else date.fromisoformat(due_str)
+        due = _time(args["due"]) if "due" in args else None
 
         task = backend.create_task(
             summary=args["summary"],
@@ -500,10 +497,7 @@ class UpdateTaskToolHandler(ToolHandler):
         if backend is None:
             raise RuntimeError(f"Backend '{backend_name}' not found")
 
-        due: date | datetime | None = None
-        if "due" in args:
-            due_str = args["due"]
-            due = datetime.fromisoformat(due_str) if "T" in due_str else date.fromisoformat(due_str)
+        due = _time(args["due"]) if "due" in args else None
         priority: int | None = args.get("priority")
 
         task = backend.update_task(

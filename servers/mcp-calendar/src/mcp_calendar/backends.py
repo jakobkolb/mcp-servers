@@ -10,10 +10,49 @@ import caldav
 import icalendar
 from dateutil.rrule import rrulestr
 
-from .calendar import CalendarBackend, CalendarEvent, CalendarTask, UnsupportedOperationError
+from .calendar import (
+    CalendarBackend,
+    CalendarEvent,
+    CalendarTask,
+    UnsupportedOperationError,
+    localize,
+)
 from .config import GoogleConfig, ICloudConfig, NextcloudConfig
 
 logger = logging.getLogger(__name__)
+
+
+def _set(comp: icalendar.Component, **props: object) -> None:
+    """Replace each given property on comp; None leaves it untouched. Times are localized."""
+    for key, value in props.items():
+        if value is None:
+            continue
+        comp.pop(key, None)
+        comp.add(key, localize(value) if isinstance(value, date) else value)
+
+
+def _set_alarms(event: icalendar.Event, alarms: list[timedelta]) -> None:
+    event.subcomponents = [c for c in event.subcomponents if c.name != "VALARM"]
+    for offset in alarms:
+        alarm = icalendar.Alarm()
+        alarm.add("ACTION", "DISPLAY")
+        alarm.add("DESCRIPTION", "Reminder")
+        alarm.add("TRIGGER", -offset)
+        event.add_component(alarm)
+
+
+def _to_ical(cal: icalendar.Calendar) -> str:
+    cal.add_missing_timezones()
+    return cal.to_ical().decode("utf-8")
+
+
+def _new_calendar(comp: icalendar.Component) -> str:
+    cal = icalendar.Calendar()
+    cal.add("prodid", "-//mcp-calendar//EN")
+    cal.add("version", "2.0")
+    comp.add("uid", str(uuid.uuid4()))
+    cal.add_component(comp)
+    return _to_ical(cal)
 
 
 class CaldavBackend(CalendarBackend):
@@ -85,40 +124,22 @@ class CaldavBackend(CalendarBackend):
             calendars = [c for c in calendars if c.name == self._calendar_filter]
         return calendars
 
-    def _parse_event(self, caldav_event: caldav.Event, cal_name: str) -> CalendarEvent:
-        return self._parse_event_component(caldav_event.icalendar_component, cal_name)
-
-    def _parse_event_component(self, comp: Any, cal_name: str) -> CalendarEvent:
-        uid = str(comp.get("uid", ""))
-        summary = str(comp.get("summary", ""))
-        description_prop = comp.get("description")
-        description = str(description_prop) if description_prop is not None else None
-        location_prop = comp.get("location")
-        location = str(location_prop) if location_prop is not None else None
-
+    def _parse_event(self, comp: icalendar.Event, cal_name: str) -> CalendarEvent:
+        description = comp.get("description")
+        location = comp.get("location")
+        triggers = [a["TRIGGER"].dt for a in comp.walk("VALARM") if "TRIGGER" in a]
         dtstart = comp.get("dtstart")
         dtend = comp.get("dtend")
-
-        start_dt: datetime | date = dtstart.dt if dtstart is not None else datetime.now(tz=UTC)
-        end_dt: datetime | date = dtend.dt if dtend is not None else datetime.now(tz=UTC)
-
-        alarms: list[timedelta] = []
-        for sub in comp.walk():
-            if sub.name == "VALARM":
-                trigger = sub.get("TRIGGER")
-                if trigger is not None and isinstance(trigger.dt, timedelta):
-                    alarms.append(abs(trigger.dt))
-
         return CalendarEvent(
-            uid=uid,
-            summary=summary,
-            start=start_dt,
-            end=end_dt,
-            description=description,
-            location=location,
+            uid=str(comp.get("uid", "")),
+            summary=str(comp.get("summary", "")),
+            start=localize(dtstart.dt) if dtstart is not None else datetime.now(tz=UTC),
+            end=localize(dtend.dt) if dtend is not None else datetime.now(tz=UTC),
+            description=str(description) if description is not None else None,
+            location=str(location) if location is not None else None,
             calendar_name=cal_name,
             backend_name=self.name,
-            alarms=alarms,
+            alarms=[abs(t) for t in triggers if isinstance(t, timedelta)],
         )
 
     def _expand_occurrences(
@@ -181,83 +202,16 @@ class CaldavBackend(CalendarBackend):
             occurrences.append(occ)
         return occurrences
 
-    def _build_ical(
-        self,
-        uid: str,
-        summary: str,
-        start: datetime | date,
-        end: datetime | date,
-        description: str | None,
-        location: str | None,
-        alarms: list[timedelta] | None = None,
-    ) -> bytes:
-        cal = icalendar.Calendar()
-        cal.add("prodid", "-//mcp-calendar//EN")
-        cal.add("version", "2.0")
-
-        event = icalendar.Event()
-        event.add("uid", uid)
-        event.add("summary", summary)
-        event.add("dtstart", start)
-        event.add("dtend", end)
-        if description is not None:
-            event.add("description", description)
-        if location is not None:
-            event.add("location", location)
-        for offset in alarms or []:
-            alarm = icalendar.Alarm()
-            alarm.add("ACTION", "DISPLAY")
-            alarm.add("DESCRIPTION", "Reminder")
-            alarm.add("TRIGGER", -offset)
-            event.add_component(alarm)
-
-        cal.add_component(event)
-        return cal.to_ical()
-
-    def _build_vtodo(
-        self,
-        uid: str,
-        summary: str,
-        description: str | None,
-        due: date | datetime | None,
-        priority: int,
-    ) -> bytes:
-        cal = icalendar.Calendar()
-        cal.add("prodid", "-//mcp-calendar//EN")
-        cal.add("version", "2.0")
-
-        todo = icalendar.Todo()
-        todo.add("uid", uid)
-        todo.add("summary", summary)
-        todo.add("priority", priority)
-        todo.add("status", "NEEDS-ACTION")
-        if description is not None:
-            todo.add("description", description)
-        if due is not None:
-            todo.add("due", due)
-
-        cal.add_component(todo)
-        return cal.to_ical()
-
-    def _parse_task(self, caldav_obj: caldav.CalendarObjectResource, cal_name: str) -> CalendarTask:
-        comp = caldav_obj.icalendar_component
-        uid = str(comp.get("uid", ""))
-        summary = str(comp.get("summary", ""))
-        desc_prop = comp.get("description")
-        description = str(desc_prop) if desc_prop is not None else None
-        due_prop = comp.get("due")
-        due: date | datetime | None = due_prop.dt if due_prop is not None else None
-        priority_prop = comp.get("priority")
-        priority = int(priority_prop) if priority_prop is not None else 0
-        status_prop = comp.get("status")
-        status = str(status_prop) if status_prop is not None else "NEEDS-ACTION"
+    def _parse_task(self, comp: icalendar.Todo, cal_name: str) -> CalendarTask:
+        description = comp.get("description")
+        due = comp.get("due")
         return CalendarTask(
-            uid=uid,
-            summary=summary,
-            description=description,
-            due=due,
-            priority=priority,
-            status=status,
+            uid=str(comp.get("uid", "")),
+            summary=str(comp.get("summary", "")),
+            description=str(description) if description is not None else None,
+            due=localize(due.dt) if due is not None else None,
+            priority=int(comp.get("priority", 0)),
+            status=str(comp.get("status", "NEEDS-ACTION")),
             calendar_name=cal_name,
             backend_name=self.name,
         )
@@ -294,6 +248,7 @@ class CaldavBackend(CalendarBackend):
         return [c.name for c in self._get_calendars()]
 
     def list_events(self, start: datetime, end: datetime) -> list[CalendarEvent]:
+        start, end = localize(start), localize(end)
         events: list[CalendarEvent] = []
         for cal in self._get_calendars():
             try:
@@ -304,7 +259,7 @@ class CaldavBackend(CalendarBackend):
                 for e in raw_events:
                     try:
                         for comp in self._expand_occurrences(e, start, end):
-                            events.append(self._parse_event_component(comp, cal_name))
+                            events.append(self._parse_event(comp, cal_name))
                     except Exception:
                         logger.exception("Failed to parse event in calendar %s", cal_name)
             except Exception:
@@ -331,21 +286,18 @@ class CaldavBackend(CalendarBackend):
                 raise ValueError("No calendars available")
             target = calendars[0]
 
-        uid = str(uuid.uuid4())
-        ical_bytes = self._build_ical(uid, summary, start, end, description, location, alarms)
-        target.save_event(ical_bytes)
-
-        return CalendarEvent(
-            uid=uid,
+        event = icalendar.Event()
+        _set(
+            event,
             summary=summary,
-            start=start,
-            end=end,
+            dtstart=start,
+            dtend=end,
             description=description,
             location=location,
-            calendar_name=target.name or "",
-            backend_name=self.name,
-            alarms=alarms or [],
         )
+        _set_alarms(event, alarms or [])
+        target.save_event(_new_calendar(event))
+        return self._parse_event(event, target.name or "")
 
     def update_event(
         self,
@@ -365,65 +317,20 @@ class CaldavBackend(CalendarBackend):
 
             # Patch in-place to preserve custom properties (RRULE, ATTENDEE, etc.)
             raw_cal = icalendar.Calendar.from_ical(event.data)
-            vevent = next(c for c in raw_cal.walk() if c.name == "VEVENT")
-
-            if summary is not None:
-                del vevent["SUMMARY"]
-                vevent.add("SUMMARY", summary)
-            if start is not None:
-                del vevent["DTSTART"]
-                vevent.add("DTSTART", start)
-            if end is not None:
-                del vevent["DTEND"]
-                vevent.add("DTEND", end)
-            if description is not None:
-                if "DESCRIPTION" in vevent:
-                    del vevent["DESCRIPTION"]
-                vevent.add("DESCRIPTION", description)
-            if location is not None:
-                if "LOCATION" in vevent:
-                    del vevent["LOCATION"]
-                vevent.add("LOCATION", location)
-            if alarms is not None:
-                vevent.subcomponents = [c for c in vevent.subcomponents if c.name != "VALARM"]
-                for offset in alarms:
-                    alarm = icalendar.Alarm()
-                    alarm.add("ACTION", "DISPLAY")
-                    alarm.add("DESCRIPTION", "Reminder")
-                    alarm.add("TRIGGER", -offset)
-                    vevent.add_component(alarm)
-
-            event.data = raw_cal.to_ical().decode("utf-8")
-            event.save()
-
-            new_summary = str(vevent.get("SUMMARY", ""))
-            dtstart = vevent.get("DTSTART")
-            dtend = vevent.get("DTEND")
-            new_start: datetime | date = dtstart.dt if dtstart is not None else datetime.now(tz=UTC)
-            new_end: datetime | date = dtend.dt if dtend is not None else datetime.now(tz=UTC)
-            desc_prop = vevent.get("DESCRIPTION")
-            new_description = str(desc_prop) if desc_prop is not None else None
-            loc_prop = vevent.get("LOCATION")
-            new_location = str(loc_prop) if loc_prop is not None else None
-            new_alarms: list[timedelta] = []
-            for sub in vevent.subcomponents:
-                if sub.name == "VALARM":
-                    trigger = sub.get("TRIGGER")
-                    if trigger is not None and isinstance(trigger.dt, timedelta):
-                        new_alarms.append(abs(trigger.dt))
-
-            cal_name: str = getattr(cal, "name", "") or ""
-            return CalendarEvent(
-                uid=uid,
-                summary=new_summary,
-                start=new_start,
-                end=new_end,
-                description=new_description,
-                location=new_location,
-                calendar_name=cal_name,
-                backend_name=self.name,
-                alarms=new_alarms,
+            vevent = raw_cal.events[0]
+            _set(
+                vevent,
+                summary=summary,
+                dtstart=start,
+                dtend=end,
+                description=description,
+                location=location,
             )
+            if alarms is not None:
+                _set_alarms(vevent, alarms)
+            event.data = _to_ical(raw_cal)
+            event.save()
+            return self._parse_event(vevent, getattr(cal, "name", "") or "")
 
         raise ValueError(f"Event with uid '{uid}' not found in any calendar")
 
@@ -455,20 +362,17 @@ class CaldavBackend(CalendarBackend):
                 raise ValueError("No task collections available")
             target = collections[0]
 
-        uid = str(uuid.uuid4())
-        ical_bytes = self._build_vtodo(uid, summary, description, due, priority)
-        target.save_event(ical_bytes)
-
-        return CalendarTask(
-            uid=uid,
+        todo = icalendar.Todo()
+        _set(
+            todo,
             summary=summary,
             description=description,
             due=due,
             priority=priority,
             status="NEEDS-ACTION",
-            calendar_name=target.name or "",
-            backend_name=self.name,
         )
+        target.save_event(_new_calendar(todo))
+        return self._parse_task(todo, target.name or "")
 
     def update_task(
         self,
@@ -489,27 +393,15 @@ class CaldavBackend(CalendarBackend):
             raw_cal = icalendar.Calendar.from_ical(task_obj.data)
             vtodo = next(c for c in raw_cal.walk() if c.name == "VTODO")
 
-            if summary is not None:
-                del vtodo["SUMMARY"]
-                vtodo.add("SUMMARY", summary)
-            if description is not None:
-                if "DESCRIPTION" in vtodo:
-                    del vtodo["DESCRIPTION"]
-                vtodo.add("DESCRIPTION", description)
-            if due is not None:
-                if "DUE" in vtodo:
-                    del vtodo["DUE"]
-                vtodo.add("DUE", due)
-            if priority is not None:
-                if "PRIORITY" in vtodo:
-                    del vtodo["PRIORITY"]
-                vtodo.add("PRIORITY", priority)
-            if status is not None:
-                if "STATUS" in vtodo:
-                    del vtodo["STATUS"]
-                vtodo.add("STATUS", status)
-
-            task_obj.data = raw_cal.to_ical().decode("utf-8")
+            _set(
+                vtodo,
+                summary=summary,
+                description=description,
+                due=due,
+                priority=priority,
+                status=status,
+            )
+            task_obj.data = _to_ical(raw_cal)
             task_obj.save()
 
             final_summary = summary if summary is not None else str(vtodo.get("SUMMARY", ""))
@@ -548,7 +440,7 @@ class CaldavBackend(CalendarBackend):
                 col_name: str = col.name or ""
                 for obj in col.todos():
                     try:
-                        tasks.append(self._parse_task(obj, col_name))
+                        tasks.append(self._parse_task(obj.icalendar_component, col_name))
                     except Exception:
                         logger.exception("Failed to parse task in collection %s", col_name)
             except Exception:
