@@ -55,3 +55,8 @@ ignore_errors = true
 # pyyaml ships types-PyYAML separately — suppress missing-stub noise
 module = ["yaml", "yaml.*"]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# faster-whisper ships no py.typed marker — suppress missing-stub noise
+module = ["faster_whisper", "faster_whisper.*"]
+ignore_missing_imports = true
