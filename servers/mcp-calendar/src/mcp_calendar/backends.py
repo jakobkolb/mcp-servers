@@ -9,6 +9,7 @@ from typing import cast
 import caldav
 import icalendar
 import recurring_ical_events
+from dateutil.rrule import rrulestr
 
 from .calendar import (
     CalendarEvent,
@@ -39,6 +40,18 @@ def _validate(summary: str | None, start: datetime | date, end: datetime | date)
         raise ValueError("start and end must both be dates (all-day) or both datetimes")
     if localize(end) <= localize(start):
         raise ValueError(f"end ({end.isoformat()}) must be after start ({start.isoformat()})")
+
+
+def _parse_rrule(rrule: str, start: datetime | date) -> icalendar.vRecur:
+    """Reject rules the server would silently drop; vRecur alone accepts e.g. "nonsense"."""
+    rrule = rrule.removeprefix("RRULE:")
+    # All-day series stay floating, so their UNTIL may be a plain date.
+    dtstart = localize(start) if isinstance(start, datetime) else datetime.combine(start, time())
+    try:
+        rrulestr(rrule, dtstart=dtstart)
+        return icalendar.vRecur.from_ical(rrule)
+    except (ValueError, TypeError) as e:
+        raise ValueError(f"Invalid rrule {rrule!r}: {e}") from e
 
 
 def _set_alarms(event: icalendar.Event, alarms: list[timedelta]) -> None:
@@ -272,6 +285,7 @@ class CaldavBackend:
         rrule: str | None = None,
     ) -> CalendarEvent:
         _validate(summary, start, end)
+        recurrence = _parse_rrule(rrule, start) if rrule is not None else None
         calendars = self._get_calendars()
         if calendar_name is not None:
             target = next((c for c in calendars if c.name == calendar_name), None)
@@ -292,8 +306,8 @@ class CaldavBackend:
             location=location,
         )
         _set_alarms(event, alarms or [])
-        if rrule is not None:
-            event.add("rrule", icalendar.vRecur.from_ical(rrule))
+        if recurrence is not None:
+            event.add("rrule", recurrence)
         target.save_event(_new_calendar(event))
         return self._parse_event(event, target.name or "")
 
