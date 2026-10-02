@@ -562,6 +562,10 @@ class ListTasksToolHandler(ToolHandler):
                         "type": "string",
                         "description": "Optional task list / calendar name to filter results.",
                     },
+                    "include_completed": {
+                        "type": "boolean",
+                        "description": "Also return COMPLETED and CANCELLED tasks (default false).",
+                    },
                 },
                 "required": [],
             },
@@ -575,7 +579,12 @@ class ListTasksToolHandler(ToolHandler):
         for backend in _backends:
             if backend_filter is not None and backend.name != backend_filter:
                 continue
-            tasks.extend(backend.list_tasks(calendar_name=calendar_name))
+            tasks.extend(
+                backend.list_tasks(
+                    calendar_name=calendar_name,
+                    include_completed=args.get("include_completed", False),
+                )
+            )
 
         return [TextContent(type="text", text=json.dumps([t.to_dict() for t in tasks], indent=2))]
 

@@ -515,7 +515,7 @@ def test_list_tasks_calendar_name_filter(mocker: pytest.MonkeyPatch) -> None:
     mocker.patch.object(tools, "_backends", [b])
 
     ListTasksToolHandler().run_tool({"calendar_name": "Work Tasks"})
-    b.list_tasks.assert_called_once_with(calendar_name="Work Tasks")
+    b.list_tasks.assert_called_once_with(calendar_name="Work Tasks", include_completed=False)
 
 
 # ---------------------------------------------------------------------------

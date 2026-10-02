@@ -940,6 +940,35 @@ def test_update_task_patches_in_place() -> None:
 # ---------------------------------------------------------------------------
 
 
+def test_update_task_returns_stored_fields() -> None:
+    cal = _mock_cal("Tasks")
+    raw_task = _mock_ical_task(uid="t")
+    raw_task.data = raw_task.data.replace("PRIORITY:0", "PRIORITY:3\r\nDESCRIPTION:keep me")
+    cal.get_todo_by_uid.return_value = raw_task
+    with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
+        MockClient.return_value.principal.return_value.calendars.return_value = [cal]
+        task = _make_backend().update_task("t", status="COMPLETED")
+    assert (task.description, task.priority, task.status) == ("keep me", 3, "COMPLETED")
+
+
+def test_list_tasks_include_completed_is_passed_to_caldav() -> None:
+    cal = _mock_cal("Tasks")
+    cal.todos.return_value = []
+    with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
+        MockClient.return_value.principal.return_value.calendars.return_value = [cal]
+        _make_backend().list_tasks(include_completed=True)
+    cal.todos.assert_called_once_with(include_completed=True)
+
+
+def test_create_task_in_event_only_calendar_says_so() -> None:
+    cal = _mock_cal("Events")
+    cal.get_supported_components.return_value = ["VEVENT"]
+    with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
+        MockClient.return_value.principal.return_value.calendars.return_value = [cal]
+        with pytest.raises(ValueError, match="does not support tasks"):
+            _make_backend().create_task("x", calendar_name="Events")
+
+
 def test_delete_task() -> None:
     backend = _make_backend()
     cal = _mock_cal("Tasks")
