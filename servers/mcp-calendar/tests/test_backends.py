@@ -56,6 +56,7 @@ def _mock_ical_event(
 
     event = MagicMock()
     event.icalendar_component = event_comp_real
+    event.icalendar_instance = cal_obj
     event.data = ical_str
     return event
 
@@ -85,6 +86,7 @@ def _mock_recurring_event(
 
     event = MagicMock()
     event.icalendar_component = vevent
+    event.icalendar_instance = cal_obj
     event.data = ical_str
     return event
 
@@ -117,7 +119,7 @@ def test_list_events() -> None:
     end = datetime(2024, 6, 30, tzinfo=UTC)
     cal = _mock_cal("Work")
     raw_event = _mock_ical_event()
-    cal.date_search.return_value = [raw_event]
+    cal.search.return_value = [raw_event]
 
     with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
         MockClient.return_value.principal.return_value.calendars.return_value = [cal]
@@ -138,11 +140,11 @@ def test_list_events_handles_error() -> None:
     end = datetime(2024, 6, 30, tzinfo=UTC)
 
     bad_cal = _mock_cal("Bad")
-    bad_cal.date_search.side_effect = RuntimeError("connection failed")
+    bad_cal.search.side_effect = RuntimeError("connection failed")
 
     good_cal = _mock_cal("Good")
     good_event = _mock_ical_event(uid="uid-ok", summary="OK")
-    good_cal.date_search.return_value = [good_event]
+    good_cal.search.return_value = [good_event]
 
     with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
         MockClient.return_value.principal.return_value.calendars.return_value = [bad_cal, good_cal]
@@ -150,6 +152,52 @@ def test_list_events_handles_error() -> None:
 
     assert len(events) == 1
     assert events[0].summary == "OK"
+
+
+_SERIES = """BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:series
+SUMMARY:Work block
+DTSTART:20261020T080000Z
+DTEND:20261020T153000Z
+RRULE:FREQ=WEEKLY;COUNT=5
+END:VEVENT
+BEGIN:VEVENT
+UID:series
+SUMMARY:Moved
+RECURRENCE-ID:20261027T080000Z
+DTSTART:20261027T200000Z
+DTEND:20261027T210000Z
+END:VEVENT
+END:VCALENDAR
+"""
+
+
+def _list_series(start: datetime, end: datetime) -> list[tuple[str, datetime | date]]:
+    cal = _mock_cal()
+    cal.search.return_value = [MagicMock(icalendar_instance=icalendar.Calendar.from_ical(_SERIES))]
+    with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
+        MockClient.return_value.principal.return_value.calendars.return_value = [cal]
+        return [(e.summary, e.start) for e in _make_backend().list_events(start, end)]
+
+
+def test_list_events_override_replaces_instance_and_stays_in_its_window() -> None:
+    day = datetime(2026, 10, 27, tzinfo=UTC)
+    assert _list_series(day, day + timedelta(days=1)) == [
+        ("Moved", datetime(2026, 10, 27, 20, tzinfo=UTC))
+    ]
+    later = datetime(2026, 11, 10, tzinfo=UTC)
+    assert _list_series(later, later + timedelta(days=2)) == [
+        ("Work block", datetime(2026, 11, 10, 8, tzinfo=UTC))
+    ]
+
+
+def test_list_events_includes_in_progress_recurring_instance() -> None:
+    noon = datetime(2026, 11, 3, 12, tzinfo=UTC)
+    assert _list_series(noon, noon + timedelta(hours=1)) == [
+        ("Work block", datetime(2026, 11, 3, 8, tzinfo=UTC))
+    ]
 
 
 def test_list_events_expands_weekly_rrule_for_full_range() -> None:
@@ -161,7 +209,7 @@ def test_list_events_expands_weekly_rrule_for_full_range() -> None:
         dtstart=datetime(2026, 6, 2, 18, 0, tzinfo=UTC),
         dtend=datetime(2026, 6, 2, 19, 0, tzinfo=UTC),
     )
-    cal.date_search.return_value = [master]
+    cal.search.return_value = [master]
 
     start = datetime(2026, 6, 1, tzinfo=UTC)
     end = datetime(2026, 6, 30, 23, 59, 59, tzinfo=UTC)
@@ -191,7 +239,7 @@ def test_list_events_respects_exdate_in_rrule_expansion() -> None:
         dtend=datetime(2026, 6, 2, 19, 0, tzinfo=UTC),
         exdates=[datetime(2026, 6, 16, 18, 0, tzinfo=UTC)],
     )
-    cal.date_search.return_value = [master]
+    cal.search.return_value = [master]
 
     start = datetime(2026, 6, 1, tzinfo=UTC)
     end = datetime(2026, 6, 30, 23, 59, 59, tzinfo=UTC)
@@ -214,7 +262,7 @@ def test_list_events_expands_all_day_daily_rrule() -> None:
         dtend=date(2026, 6, 2),
         rrule={"freq": "daily"},
     )
-    cal.date_search.return_value = [master]
+    cal.search.return_value = [master]
 
     start = datetime(2026, 6, 1)
     end = datetime(2026, 6, 5, 23, 59, 59)
@@ -886,7 +934,7 @@ def test_cache_invalidated_on_connection_error() -> None:
     end = datetime(2024, 6, 30, tzinfo=UTC)
 
     good_cal = _mock_cal("Work")
-    good_cal.date_search.return_value = [_mock_ical_event()]
+    good_cal.search.return_value = [_mock_ical_event()]
 
     with patch("mcp_calendar.backends.caldav.DAVClient") as MockClient:
         # First call: principal().calendars() raises a connection error

@@ -970,6 +970,7 @@ dependencies = [
     { name = "python-dateutil" },
     { name = "python-dotenv" },
     { name = "pyyaml" },
+    { name = "recurring-ical-events" },
     { name = "tzdata" },
 ]
 
@@ -989,6 +990,7 @@ requires-dist = [
     { name = "python-dateutil", specifier = ">=2.9" },
     { name = "python-dotenv", specifier = ">=1.0.1" },
     { name = "pyyaml", specifier = ">=6.0" },
+    { name = "recurring-ical-events", specifier = ">=3.0" },
     { name = "tzdata", specifier = ">=2024.1" },
 ]
 
