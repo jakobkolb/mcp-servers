@@ -480,6 +480,41 @@ def test_get_freebusy_all_day_event() -> None:
     assert slot_start.date() == date(2024, 6, 10)
 
 
+def test_get_freebusy_sorts_merges_and_skips_transparent(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("mcp_calendar.calendar.TZ", ZoneInfo("Europe/Berlin"))
+    berlin = ZoneInfo("Europe/Berlin")
+    events = [
+        CalendarEvent(
+            uid="b",
+            summary="B",
+            start=datetime(2026, 6, 1, 10, 30, tzinfo=berlin),
+            end=datetime(2026, 6, 1, 12, tzinfo=berlin),
+        ),
+        CalendarEvent(
+            uid="a",
+            summary="A",
+            start=datetime(2026, 6, 1, 9, tzinfo=berlin),
+            end=datetime(2026, 6, 1, 11, tzinfo=berlin),
+        ),
+        CalendarEvent(
+            uid="bday",
+            summary="Birthday",
+            start=date(2026, 6, 1),
+            end=date(2026, 6, 2),
+            transparent=True,
+        ),
+        CalendarEvent(uid="off", summary="Day off", start=date(2026, 6, 3), end=date(2026, 6, 4)),
+    ]
+    backend = _make_backend()
+    with patch.object(backend, "list_events", return_value=events):
+        slots = backend.get_freebusy(datetime(2026, 6, 1), datetime(2026, 6, 5))
+
+    assert [(s.isoformat(), e.isoformat()) for s, e in slots] == [
+        ("2026-06-01T09:00:00+02:00", "2026-06-01T12:00:00+02:00"),
+        ("2026-06-03T00:00:00+02:00", "2026-06-04T00:00:00+02:00"),
+    ]
+
+
 # ---------------------------------------------------------------------------
 # URL construction
 # ---------------------------------------------------------------------------
