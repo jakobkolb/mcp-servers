@@ -75,7 +75,9 @@ class WhatsAppTools:
             _Tool(
                 "list_messages",
                 "Search messages in allowed chats, newest first. after/before are ISO-8601"
-                " (no timezone means UTC); sender is a phone number; query matches message text.",
+                " (no timezone means UTC); sender is a phone number; query matches message text."
+                " Each message has sender_name: the name saved in the phone's contacts, else the"
+                " sender's profile name, null if unknown.",
                 _schema(
                     {
                         "after": _S,

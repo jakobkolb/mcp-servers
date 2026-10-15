@@ -37,6 +37,11 @@ func Open(path string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
+	// History messages used to store the full participant JID as sender; keep only the user part.
+	if _, err := db.Exec(`UPDATE messages SET sender = substr(sender, 1, instr(sender, '@') - 1) WHERE instr(sender, '@') > 0`); err != nil {
+		db.Close()
+		return nil, err
+	}
 	return &Store{db: db}, nil
 }
 
@@ -61,6 +66,24 @@ func (s *Store) SaveMessage(m Message) error {
 		(id, chat_jid, sender, content, timestamp, is_from_me, media_type) VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		m.ID, m.ChatJID, m.Sender, m.Content, m.Time.UTC().Format(timeFormat), m.FromMe, m.MediaType)
 	return err
+}
+
+// ReplaceContacts swaps the whole contacts table for names (user part -> name) in one transaction.
+func (s *Store) ReplaceContacts(names map[string]string) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec("DELETE FROM contacts"); err != nil {
+		return err
+	}
+	for user, name := range names {
+		if _, err := tx.Exec("INSERT INTO contacts (user, name) VALUES (?, ?)", user, name); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 // ChatName returns the stored name, or "" for an unknown chat.

@@ -12,6 +12,7 @@ import (
 type Names interface {
 	Group(types.JID) (string, error)
 	Contact(types.JID) (string, error)
+	Contacts() (map[string]string, error) // all sender names, see ContactNames
 }
 
 // Recorder turns WhatsApp events into rows.
@@ -41,6 +42,17 @@ func (r *Recorder) name(jid types.JID, hint, sender string) string {
 		return sender
 	}
 	return jid.User
+}
+
+// RefreshContacts rewrites the contacts table from the current names.
+func (r *Recorder) RefreshContacts() {
+	names, err := r.Names.Contacts()
+	if err == nil {
+		err = r.Store.ReplaceContacts(names)
+	}
+	if err != nil {
+		log.Printf("store contacts: %v", err)
+	}
 }
 
 func (r *Recorder) OnMessage(e *events.Message) {

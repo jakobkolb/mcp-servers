@@ -13,6 +13,12 @@ from typing import Any
 from .config import Config
 
 NOT_FOUND = "Chat or message not found"
+# Messages with their sender's display name (NULL when the bridge knows none).
+_MESSAGES = "messages m LEFT JOIN contacts ct ON ct.user = m.sender"
+_MESSAGE_COLS = (
+    "m.id, m.chat_jid, m.sender, ct.name AS sender_name, m.content, m.timestamp,"
+    " m.is_from_me, m.media_type"
+)
 MAX_LIMIT = 100
 _STORED_FORMAT = "%Y-%m-%dT%H:%M:%SZ"  # contract: UTC, fixed width
 
@@ -127,8 +133,8 @@ class Store:
         offset = _page(limit, page)
         scope, params = self._scope("m.chat_jid")
         sql = (
-            "SELECT m.id, m.chat_jid, c.name AS chat_name, m.sender, m.content, m.timestamp,"
-            " m.is_from_me, m.media_type FROM messages m JOIN chats c ON c.jid = m.chat_jid"
+            f"SELECT {_MESSAGE_COLS}, c.name AS chat_name"
+            f" FROM {_MESSAGES} JOIN chats c ON c.jid = m.chat_jid"
             f" WHERE {scope}"
         )
         for clause, value in (
@@ -148,10 +154,10 @@ class Store:
     def get_message_context(
         self, message_id: str, chat_jid: str, before: int = 5, after: int = 5
     ) -> dict[str, Any]:
-        scope, params = self._scope("chat_jid")
-        cols = "id, chat_jid, sender, content, timestamp, is_from_me, media_type"
+        scope, params = self._scope("m.chat_jid")
+        cols = f"m.rowid AS rid, {_MESSAGE_COLS} FROM {_MESSAGES}"
         target = self._select(
-            f"SELECT rowid AS rid, {cols} FROM messages WHERE id = ? AND chat_jid = ? AND {scope}",
+            f"SELECT {cols} WHERE m.id = ? AND m.chat_jid = ? AND {scope}",
             [message_id, chat_jid, *params],
         )
         if not target:
@@ -165,15 +171,15 @@ class Store:
             ]
 
         # rowid breaks timestamp ties, so neighbours are well-defined within one chat.
-        order = "ORDER BY timestamp {d}, rowid {d} LIMIT ?"
+        order = "ORDER BY m.timestamp {d}, m.rowid {d} LIMIT ?"
         older = self._select(
-            f"SELECT rowid AS rid, {cols} FROM messages WHERE chat_jid = ?"
-            f" AND (timestamp, rowid) < (?, ?) {order.format(d='DESC')}",
+            f"SELECT {cols} WHERE m.chat_jid = ?"
+            f" AND (m.timestamp, m.rowid) < (?, ?) {order.format(d='DESC')}",
             [chat_jid, target[0]["timestamp"], rid, before],
         )
         newer = self._select(
-            f"SELECT rowid AS rid, {cols} FROM messages WHERE chat_jid = ?"
-            f" AND (timestamp, rowid) > (?, ?) {order.format(d='ASC')}",
+            f"SELECT {cols} WHERE m.chat_jid = ?"
+            f" AND (m.timestamp, m.rowid) > (?, ?) {order.format(d='ASC')}",
             [chat_jid, target[0]["timestamp"], rid, after],
         )
         return {"before": fmt(older[::-1]), "message": fmt(target)[0], "after": fmt(newer)}

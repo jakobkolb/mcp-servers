@@ -13,6 +13,10 @@ around an explicit contract.
 
 Media is not downloaded; messages show their `media_type` only.
 
+Each message carries `sender_name`: the name saved in your phone's contacts, else the name the
+sender set on their WhatsApp profile, `null` if neither is known yet. Names are looked up when
+reading, so a contact saved or renamed later also shows up on older messages.
+
 ## Tools
 
 | Tool | Description |
@@ -70,7 +74,7 @@ make go-test                    # Go bridge (race detector on)
 |-------|----------------|
 | Go: handler | every case in `api.json` is produced by the real handler; no other route, no non-GET |
 | Go: store | schema columns, UTC timestamps, upsert rules, foreign keys, media-type check |
-| Go: convert / events | message and history conversion; name resolution with fakes |
+| Go: convert / events | message and history conversion; chat and sender name resolution (saved > profile, LID → number) |
 | Go: pairing | rotating codes, timeout retry, errors never exit, logout → re-pair (fake linker) |
 | Go: guard | static check that no send/upload/download call exists in the bridge |
 | Python: store | allowlist leak matrix over every read path, indistinguishable errors, date handling, literal search, bounds, read-only |

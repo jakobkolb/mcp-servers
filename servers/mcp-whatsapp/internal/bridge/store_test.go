@@ -203,3 +203,42 @@ func TestReaderCanReadWhileWriterIsOpen(t *testing.T) {
 		t.Fatalf("name=%q err=%v", name, err)
 	}
 }
+
+func TestReplaceContactsSwapsTheWholeTable(t *testing.T) {
+	s, _ := openStore(t)
+	if err := s.ReplaceContacts(map[string]string{"4915111": "Alice", "4915222": "Bob"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ReplaceContacts(map[string]string{"4915111": "Alice Renamed"}); err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	rows, _ := s.db.Query("SELECT user || '=' || name FROM contacts ORDER BY user")
+	for rows.Next() {
+		var n string
+		rows.Scan(&n)
+		names = append(names, n)
+	}
+	rows.Close()
+	if !reflect.DeepEqual(names, []string{"4915111=Alice Renamed"}) {
+		t.Errorf("contacts = %v", names)
+	}
+}
+
+func TestOpenStripsServerFromOldSenders(t *testing.T) {
+	s, path := openStore(t)
+	s.SaveChat(Chat{JID: "1@g.us", LastMessage: ts("2026-01-01T10:00:00Z")})
+	s.db.Exec(`INSERT INTO messages (id, chat_jid, sender, content, timestamp) VALUES ('m1', '1@g.us', '4915111@s.whatsapp.net', 'hi', '2026-01-01T10:00:00Z')`)
+	s.Close()
+
+	s, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	var sender string
+	s.db.QueryRow("SELECT sender FROM messages WHERE id = 'm1'").Scan(&sender)
+	if sender != "4915111" {
+		t.Errorf("sender = %q", sender)
+	}
+}

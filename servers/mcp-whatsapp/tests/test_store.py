@@ -33,7 +33,7 @@ def test_config_defaults_to_nothing_allowed(monkeypatch):
 # ---- the allowlist --------------------------------------------------------
 
 SECRETS = {
-    BOB: ["top secret", "Bob Secret", "4915222", "b1", "b2"],
+    BOB: ["top secret", "Bob Secret", "4915222", "Bobby Saved", "b1", "b2"],
     ALICE: ["hello from alice", "Alice", "a3"],
     FAMILY: ["family hello", "Family", "f1"],
 }
@@ -78,6 +78,9 @@ def test_no_read_path_leaks_a_disallowed_chat(config, allowed):
                 continue
             # "a1" exists in two chats; it is only secret if neither is allowed
             if marker in ("a1",) and any(c in allowed for c in (ALICE, FAMILY)):
+                continue
+            # Alice also writes in FAMILY, where her sender name (like her number) is visible
+            if marker == "Alice" and FAMILY in allowed:
                 continue
             assert marker not in blob, f"{marker!r} of {chat} leaked with allowlist {allowed}"
 
@@ -128,12 +131,20 @@ def test_list_messages_newest_first_with_all_fields(config):
         "chat_jid": ALICE,
         "chat_name": "Alice",
         "sender": "4915111",
+        "sender_name": "Alice Saved",
         "content": "photo",
         "timestamp": ts(2, 10, 30),
         "is_from_me": False,
         "media_type": "image",
     }
     assert msgs[1]["is_from_me"] is True and msgs[1]["media_type"] == ""
+    assert msgs[1]["sender_name"] is None  # no contact row for this sender
+
+
+def test_message_context_carries_sender_names(config):
+    ctx = store(config, FAMILY).get_message_context("f1", FAMILY)
+    assert ctx["message"]["sender_name"] == "Alice Saved"
+    assert [m["sender_name"] for m in ctx["before"]] == ["Carla Profile"]
 
 
 def test_filters_combine(config):

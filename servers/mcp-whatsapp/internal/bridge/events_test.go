@@ -15,8 +15,15 @@ import (
 )
 
 type fakeNames struct {
-	group, contact map[string]string
-	calls          int
+	group, contact, contacts map[string]string
+	calls                    int
+}
+
+func (f *fakeNames) Contacts() (map[string]string, error) {
+	if f.contacts == nil {
+		return nil, errors.New("store unavailable")
+	}
+	return f.contacts, nil
 }
 
 func (f *fakeNames) Group(j types.JID) (string, error) {
@@ -160,5 +167,16 @@ func TestOnHistoryIsIdempotent(t *testing.T) {
 	r.OnHistory(h)
 	if n := count(t, s, "SELECT COUNT(*) FROM messages"); n != 1 {
 		t.Fatalf("messages = %d", n)
+	}
+}
+
+func TestRefreshContactsKeepsOldNamesOnError(t *testing.T) {
+	n := &fakeNames{contacts: map[string]string{"4915": "Alice"}}
+	r, s := newRecorder(t, n)
+	r.RefreshContacts()
+	n.contacts = nil // lookup fails: the table must not be emptied
+	r.RefreshContacts()
+	if got := count(t, s, "SELECT COUNT(*) FROM contacts WHERE user = '4915' AND name = 'Alice'"); got != 1 {
+		t.Errorf("contacts rows = %d", got)
 	}
 }

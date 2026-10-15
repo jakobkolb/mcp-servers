@@ -43,7 +43,7 @@ def test_go_created_the_contract_schema(seeded):
     def shape(db: sqlite3.Connection) -> dict[str, list[tuple]]:
         return {
             t: [r[1:4] for r in db.execute(f"PRAGMA table_info({t})")]  # name, type, notnull
-            for t in ("chats", "messages")
+            for t in ("chats", "messages", "contacts")
         }
 
     reference = sqlite3.connect(":memory:")
@@ -62,6 +62,10 @@ def test_python_reads_what_go_wrote(seeded):
         ("a1", "hello from alice", ts(2, 9), False, ""),
     ]
     assert s.get_message_context("a1", FAMILY)["message"]["content"] == "same id, other chat"
+    assert {m["sender"]: m["sender_name"] for m in s.list_messages(chat_jid=FAMILY)} == {
+        "4915111": "Alice Saved",
+        "4915333": None,
+    }
     assert [c["jid"] for c in s.list_available_chats()] == [BOB, ALICE, FAMILY]
 
 

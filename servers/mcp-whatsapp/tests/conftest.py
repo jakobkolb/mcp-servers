@@ -33,6 +33,9 @@ MESSAGES = [
     ("f1", FAMILY, "4915111", "family hello", ts(2, 8), 0, ""),
     ("a1", FAMILY, "4915333", "same id, other chat", ts(2, 7), 0, ""),
 ]
+# (user, name): Alice is saved in the address book, 4915333 only has a profile name.
+# Bob only writes in his own chat, so his name must never show up unless BOB is allowed.
+CONTACTS = [("4915111", "Alice Saved"), ("4915333", "Carla Profile"), ("4915222", "Bobby Saved")]
 CHATS = [
     (ALICE, "Alice", ts(2, 10, 30)),
     (BOB, "Bob Secret", ts(2, 11, 5)),
@@ -47,6 +50,7 @@ def db_path(tmp_path: Path) -> str:
     db.executescript(SCHEMA)
     db.executemany("INSERT INTO chats VALUES (?, ?, ?)", CHATS)
     db.executemany("INSERT INTO messages VALUES (?, ?, ?, ?, ?, ?, ?)", MESSAGES)
+    db.executemany("INSERT INTO contacts VALUES (?, ?)", CONTACTS)
     db.commit()
     db.close()
     return str(path)

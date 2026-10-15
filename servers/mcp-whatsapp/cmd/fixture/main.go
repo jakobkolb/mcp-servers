@@ -43,4 +43,7 @@ func main() {
 			log.Fatal(err)
 		}
 	}
+	if err := s.ReplaceContacts(map[string]string{"4915111": "Alice Saved"}); err != nil {
+		log.Fatal(err)
+	}
 }
