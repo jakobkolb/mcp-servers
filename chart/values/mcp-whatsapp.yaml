@@ -1,0 +1,39 @@
+# Example values for deploying mcp-whatsapp
+# helm upgrade --install whatsapp chart/mcp-server -f chart/values/mcp-whatsapp.yaml
+
+image:
+  repository: ghcr.io/jakobkolb/mcp-whatsapp
+  tag: "latest"
+
+ingress:
+  host: whatsapp.mcp.yourdomain.com
+
+env:
+  # Chat JIDs the agent may read. Leave empty until you have paired and run
+  # list_available_chats.
+  WHATSAPP_ALLOWED_CHATS: ""
+
+extraPersistentVolumeClaims:
+  - name: whatsapp-store
+    accessModes:
+      - ReadWriteOnce
+    size: 1Gi
+
+extraVolumes:
+  - name: store
+    persistentVolumeClaim:
+      claimName: whatsapp-store
+
+extraVolumeMounts:
+  - name: store
+    mountPath: /store
+
+# The bridge is the same image with a different command. Keep its tag in step
+# with image.tag.
+extraContainers:
+  - name: whatsapp-bridge
+    image: ghcr.io/jakobkolb/mcp-whatsapp:latest
+    command: ["whatsapp-bridge"]
+    volumeMounts:
+      - name: store
+        mountPath: /store

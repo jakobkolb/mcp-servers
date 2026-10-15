@@ -6,10 +6,19 @@ SCAFFOLD      := servers/example
 MYPY_SRCS     := $(foreach d,$(filter-out $(SCAFFOLD),$(DOCKERSERVERS)),$(d)/src/)
 CHART_DIR     := chart/mcp-server
 
-.PHONY: install lint test build list-servers helm-lint helm-test helm clean test-watch
+.PHONY: install lint test go-lint go-test build list-servers helm-lint helm-test helm clean test-watch
 
 install:
 	uv sync --all-packages
+
+# Go bridge of mcp-whatsapp (needs a Go toolchain)
+GO_DIR := servers/mcp-whatsapp
+
+go-lint:
+	cd $(GO_DIR) && test -z "$$(gofmt -l .)" && go vet ./...
+
+go-test:
+	cd $(GO_DIR) && go test -race ./...
 
 lint:
 	uv run ruff check .

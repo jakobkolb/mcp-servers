@@ -15,6 +15,7 @@ dev = [
     "pytest-mock>=3.14",
     "types-requests>=2.32",
     "types-PyYAML>=6.0",
+    "types-jsonschema>=4.0",
     "pytest-testmon>=2.2.0",
     "pytest-watcher>=0.6.3",
 ]

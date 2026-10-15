@@ -16,14 +16,21 @@ jobs:
         with:
           version: "latest"
 
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: servers/mcp-whatsapp/go.mod
+          cache-dependency-path: servers/mcp-whatsapp/go.sum
+
       - name: Install
         run: make install
 
       - name: Lint
-        run: make lint
+        run: make lint go-lint
 
+      # Runs the bridge's own tests and, via the Python integration tests, the real
+      # Go code against the real Python code.
       - name: Test
-        run: make test
+        run: make test go-test
 
   helm:
     runs-on: ubuntu-latest

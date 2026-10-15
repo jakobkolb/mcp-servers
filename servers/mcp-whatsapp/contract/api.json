@@ -1,0 +1,25 @@
+{
+  "comment": "Loopback REST API of the bridge. Cases are (bridge state -> response); the Go handler tests and the Python mock bridge are both generated from this file. There is deliberately no other route.",
+  "endpoints": {
+    "auth_status": {
+      "method": "GET",
+      "path": "/api/auth/status",
+      "cases": [
+        {"name": "unpaired", "state": {"status": "unpaired", "qr": ""}, "http": 200, "body": {"status": "unpaired"}},
+        {"name": "unpaired_with_code", "state": {"status": "unpaired", "qr": "2@AbC,key,key,1"}, "http": 200, "body": {"status": "unpaired"}},
+        {"name": "paired", "state": {"status": "paired", "qr": ""}, "http": 200, "body": {"status": "paired"}},
+        {"name": "logged_out", "state": {"status": "logged_out", "qr": ""}, "http": 200, "body": {"status": "logged_out"}}
+      ]
+    },
+    "auth_qr": {
+      "method": "GET",
+      "path": "/api/auth/qr",
+      "cases": [
+        {"name": "unpaired_with_code", "state": {"status": "unpaired", "qr": "2@AbC,key,key,1"}, "http": 200, "body": {"qr": "2@AbC,key,key,1"}},
+        {"name": "unpaired_no_code_yet", "state": {"status": "unpaired", "qr": ""}, "http": 404, "body": {"error": "no pairing code available"}},
+        {"name": "logged_out_with_code", "state": {"status": "logged_out", "qr": "2@NeW,key,key,1"}, "http": 200, "body": {"qr": "2@NeW,key,key,1"}},
+        {"name": "paired", "state": {"status": "paired", "qr": ""}, "http": 404, "body": {"error": "no pairing code available"}}
+      ]
+    }
+  }
+}
