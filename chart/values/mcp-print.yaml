@@ -1,0 +1,58 @@
+# Example values for deploying mcp-print
+# helm upgrade --install print chart/mcp-server -f chart/values/mcp-print.yaml
+
+image:
+  repository: ghcr.io/jakobkolb/mcp-print
+  tag: "latest"
+
+ingress:
+  host: print.mcp.yourdomain.com
+
+env:
+  # Comma-separated CUPS queue names the agent may use; empty allows every queue.
+  PRINT_ALLOWED_PRINTERS: ""
+  # Empty uses the CUPS default destination.
+  PRINT_DEFAULT_PRINTER: ""
+  PRINT_MAX_PAGES: "20"
+  PRINT_MAX_COPIES: "10"
+
+# The host's CUPS socket (CUPS_SERVER=/run/cups/cups.sock in the image). Mount the
+# directory, not the socket file, so a cupsd restart does not leave a stale socket.
+extraVolumes:
+  - name: cups
+    hostPath:
+      path: /run/cups
+      type: Directory
+
+extraVolumeMounts:
+  - name: cups
+    mountPath: /run/cups
+
+# Renders the HTML from the tool call to PDF. Locked down: loopback only, no network
+# fetches (every URL except its own temp files is denied and DNS resolves nothing),
+# no JavaScript, and only the Chromium HTML routes.
+extraContainers:
+  - name: renderer
+    image: gotenberg/gotenberg:8.38.1-chromium
+    args:
+      - gotenberg
+      - --api-bind-ip=127.0.0.1
+      - --api-port=3000
+      - --api-timeout=40s
+      - --api-disable-download-from
+      - --webhook-disable
+      - --pdfengines-disable-routes
+      - --chromium-disable-javascript
+      - --chromium-deny-private-ips
+      - --chromium-deny-public-ips
+      - --chromium-deny-list=^(?!file:///tmp/).*
+      - --chromium-host-resolver-rules=MAP * ~NOTFOUND
+      - --chromium-max-queue-size=4
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        memory: 1Gi
+    securityContext:
+      allowPrivilegeEscalation: false
