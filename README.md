@@ -11,6 +11,7 @@ Each server lives under `servers/<name>/`, ships as a Docker container, and is m
 | [mcp-obsidian](servers/mcp-obsidian/) | Tool | GTD task management and vault CRUD directly on the markdown filesystem — no Obsidian process required |
 | [mcp-calendar](servers/mcp-calendar/) | Tool | Unified CalDAV view of iCloud, Gmail, and Nextcloud calendars |
 | [mcp-whisper](servers/mcp-whisper/) | Tool | Asynchronous speech-to-text with faster-whisper — gives Claude transcription it does not have natively |
+| [mcp-whatsapp](servers/mcp-whatsapp/) | Tool | Read-only WhatsApp with a chat allowlist; pairing via MCP (Go bridge sidecar + Python server) |
 
 ## Prerequisites
 

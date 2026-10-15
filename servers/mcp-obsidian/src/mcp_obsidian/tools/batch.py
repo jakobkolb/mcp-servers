@@ -4,7 +4,7 @@ import asyncio
 from collections.abc import Callable
 from typing import Any
 
-import jsonschema  # type: ignore[import-untyped]
+import jsonschema
 from mcp.types import Tool
 
 from mcp_obsidian.config import Config
