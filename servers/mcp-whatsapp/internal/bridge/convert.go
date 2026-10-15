@@ -1,6 +1,7 @@
 package bridge
 
 import (
+	"cmp"
 	"time"
 
 	"go.mau.fi/whatsmeow/proto/waE2E"
@@ -53,7 +54,9 @@ func HistoryRecords(conv *waHistorySync.Conversation, selfUser string) (chat Cha
 		case key.GetFromMe():
 			sender = selfUser
 		case key.GetParticipant() != "":
-			sender = key.GetParticipant()
+			if p, err := types.ParseJID(key.GetParticipant()); err == nil {
+				sender = p.User
+			}
 		}
 		t := time.Unix(int64(ts), 0)
 		if t.After(chat.LastMessage) {
@@ -62,4 +65,27 @@ func HistoryRecords(conv *waHistorySync.Conversation, selfUser string) (chat Cha
 		msgs = append(msgs, Message{ID: key.GetID(), ChatJID: chat.JID, Sender: sender, Content: text, Time: t, FromMe: key.GetFromMe(), MediaType: media})
 	}
 	return chat, msgs, len(msgs) > 0
+}
+
+// ContactNames maps JID user parts to display names: the saved (address book) name,
+// else the profile (push or business) name. lidOf gives a contact's LID, so senders
+// that appear under their LID in groups still get the name saved for their number.
+func ContactNames(all map[types.JID]types.ContactInfo, lidOf map[types.JID]types.JID) map[string]string {
+	names := map[string]string{}
+	set := func(jid types.JID, name string) {
+		if name == "" {
+			return
+		}
+		names[jid.User] = name
+		if lid, ok := lidOf[jid]; ok {
+			names[lid.User] = name
+		}
+	}
+	for jid, c := range all { // profile names first, so saved names below win
+		set(jid, cmp.Or(c.PushName, c.BusinessName))
+	}
+	for jid, c := range all {
+		set(jid, cmp.Or(c.FullName, c.FirstName))
+	}
+	return names
 }

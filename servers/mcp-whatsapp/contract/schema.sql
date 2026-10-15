@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS chats (
 CREATE TABLE IF NOT EXISTS messages (
     id         TEXT NOT NULL,
     chat_jid   TEXT NOT NULL REFERENCES chats(jid),
-    sender     TEXT NOT NULL DEFAULT '',
+    sender     TEXT NOT NULL DEFAULT '',  -- JID user part only, e.g. '4915111'
     content    TEXT NOT NULL DEFAULT '',
     timestamp  TEXT NOT NULL,
     is_from_me INTEGER NOT NULL DEFAULT 0 CHECK (is_from_me IN (0, 1)),
@@ -24,3 +24,11 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 
 CREATE INDEX IF NOT EXISTS messages_chat_time ON messages (chat_jid, timestamp);
+
+-- Display names by JID user part (= messages.sender): the name saved in the phone's
+-- address book, else the name the person set on their profile. Rewritten whenever
+-- names change, so it is joined at read time rather than copied into messages.
+CREATE TABLE IF NOT EXISTS contacts (
+    user TEXT PRIMARY KEY,
+    name TEXT NOT NULL
+);

@@ -70,6 +70,25 @@ func (c *Client) Contact(j types.JID) (string, error) {
 	return info.FullName, err
 }
 
+func (c *Client) Contacts() (map[string]string, error) {
+	ctx := context.Background()
+	all, err := c.wm.Store.Contacts.GetAllContacts(ctx)
+	if err != nil {
+		return nil, err
+	}
+	pns := make([]types.JID, 0, len(all))
+	for jid := range all {
+		if jid.Server == types.DefaultUserServer {
+			pns = append(pns, jid)
+		}
+	}
+	lidOf, err := c.wm.Store.LIDs.GetManyLIDsForPNs(ctx, pns)
+	if err != nil {
+		return nil, err
+	}
+	return ContactNames(all, lidOf), nil
+}
+
 // Factory builds a Client on the first stored device (or a fresh one) and wires its
 // events into the recorder. loggedOut is signalled, never blocked on.
 func Factory(ctx context.Context, container *sqlstore.Container, st *Store, log waLog.Logger, loggedOut chan<- struct{}) func() (Linker, error) {
@@ -91,6 +110,13 @@ func Factory(ctx context.Context, container *sqlstore.Container, st *Store, log 
 				rec.OnMessage(v)
 			case *events.HistorySync:
 				rec.OnHistory(v.Data)
+				rec.RefreshContacts() // history carries push names
+			case *events.Connected, *events.AppStateSyncComplete, *events.PushName, *events.BusinessName:
+				rec.RefreshContacts()
+			case *events.Contact:
+				if !v.FromFullSync { // a full sync ends with AppStateSyncComplete
+					rec.RefreshContacts()
+				}
 			case *events.LoggedOut:
 				select {
 				case loggedOut <- struct{}{}:

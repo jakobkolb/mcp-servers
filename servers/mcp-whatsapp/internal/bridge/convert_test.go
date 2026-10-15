@@ -1,6 +1,7 @@
 package bridge
 
 import (
+	"reflect"
 	"testing"
 	"time"
 
@@ -8,6 +9,7 @@ import (
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/proto/waHistorySync"
 	"go.mau.fi/whatsmeow/proto/waWeb"
+	"go.mau.fi/whatsmeow/types"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -72,7 +74,7 @@ func TestHistoryRecords(t *testing.T) {
 	if len(msgs) != 2 {
 		t.Fatalf("got %d messages: %+v", len(msgs), msgs)
 	}
-	if msgs[0].ID != "m1" || msgs[0].Sender != "4915@s.whatsapp.net" || msgs[0].FromMe || msgs[0].Content != "hello" || msgs[0].ChatJID != "123@g.us" {
+	if msgs[0].ID != "m1" || msgs[0].Sender != "4915" || msgs[0].FromMe || msgs[0].Content != "hello" || msgs[0].ChatJID != "123@g.us" {
 		t.Errorf("m1 = %+v", msgs[0])
 	}
 	if msgs[1].ID != "m2" || !msgs[1].FromMe || msgs[1].Sender != "4900" {
@@ -116,5 +118,29 @@ func TestHistoryRecordsRejectsBadConversations(t *testing.T) {
 		if _, _, ok := HistoryRecords(conv, "x"); ok {
 			t.Errorf("%s: accepted", name)
 		}
+	}
+}
+
+func TestContactNamesPrefersSavedNameAndCoversLID(t *testing.T) {
+	pn := func(u string) types.JID { return types.NewJID(u, types.DefaultUserServer) }
+	lid := func(u string) types.JID { return types.NewJID(u, types.HiddenUserServer) }
+	all := map[types.JID]types.ContactInfo{
+		pn("4915111"): {FullName: "Alice Saved", PushName: "Ali"}, // saved beats profile
+		lid("9001"):   {PushName: "Ali (lid)"},                    // LID of Alice: saved name wins
+		pn("4915222"): {PushName: "Bob"},                          // profile only
+		pn("4915333"): {FirstName: "Carol"},                       // first name counts as saved
+		pn("4915444"): {BusinessName: "Dave's Shop"},              // business name as profile fallback
+		pn("4915555"): {},                                         // nothing known: no row
+		lid("9006"):   {PushName: "Eve"},                          // unmapped LID keeps its profile name
+	}
+	lidOf := map[types.JID]types.JID{pn("4915111"): lid("9001"), pn("4915222"): lid("9002")}
+
+	want := map[string]string{
+		"4915111": "Alice Saved", "9001": "Alice Saved",
+		"4915222": "Bob", "9002": "Bob",
+		"4915333": "Carol", "4915444": "Dave's Shop", "9006": "Eve",
+	}
+	if got := ContactNames(all, lidOf); !reflect.DeepEqual(got, want) {
+		t.Errorf("got %v\nwant %v", got, want)
 	}
 }
