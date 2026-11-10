@@ -8,14 +8,6 @@ image:
 service:
   port: 8080
 
-ingress:
-  host: obsidian.mcp.yourdomain.com
-  annotations:
-    cert-manager.io/cluster-issuer: letsencrypt-prod
-    nginx.ingress.kubernetes.io/auth-type: basic
-    nginx.ingress.kubernetes.io/auth-secret: obsidian-basic-auth
-    nginx.ingress.kubernetes.io/auth-realm: "MCP Authentication Required"
-
 env:
   VAULT_PATH: /vault
   MCP_TRANSPORT: streamable-http

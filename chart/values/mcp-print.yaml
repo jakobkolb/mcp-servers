@@ -5,9 +5,6 @@ image:
   repository: ghcr.io/jakobkolb/mcp-print
   tag: "latest"
 
-ingress:
-  host: print.mcp.yourdomain.com
-
 env:
   # Comma-separated CUPS queue names the agent may use; empty allows every queue.
   PRINT_ALLOWED_PRINTERS: ""
