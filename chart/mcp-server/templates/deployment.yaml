@@ -11,6 +11,22 @@ spec:
       {{- include "mcp-server.selectorLabels" . | nindent 6 }}
   template:
     metadata:
+      {{- if or .Values.configFile.enabled .Values.secretEnv }}
+      annotations:
+        {{- /* A mounted Secret updates on disk and an env var is read once at start,
+               so without these the pod keeps running on the old credentials after
+               a helm upgrade or an ArgoCD sync. The hashes cover exactly what
+               configmap.yaml and secret.yaml put into their Secrets (the file name,
+               its content, the env map), so any change rolls the pod. Computed from
+               the values, not by including the Secret templates, which would break
+               helm-unittest suites that load deployment.yaml alone. */}}
+        {{- if .Values.configFile.enabled }}
+        checksum/config: {{ list (base .Values.configFile.mountPath) .Values.configFile.content | toJson | sha256sum }}
+        {{- end }}
+        {{- if .Values.secretEnv }}
+        checksum/secret: {{ .Values.secretEnv | toJson | sha256sum }}
+        {{- end }}
+      {{- end }}
       labels:
         {{- include "mcp-server.labels" . | nindent 8 }}
     spec:
