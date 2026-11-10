@@ -38,7 +38,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Helm
-        run: curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.17.3
 
       - name: Install kubeconform
         env:
@@ -75,7 +77,10 @@ jobs:
         run: echo "servers=$(make list-servers)" >> "$GITHUB_OUTPUT"
 
   publish-chart:
-    needs: [helm]
+    # build, not just helm: a tag must not publish a chart (and, through
+    # notify-knowledge-base, open a bump PR) for a release whose tests or image
+    # build failed. build itself waits for lint-and-test.
+    needs: [helm, build]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
@@ -85,7 +90,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Helm
-        run: curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.17.3
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
