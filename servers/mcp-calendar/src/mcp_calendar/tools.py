@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence
+import logging
+from collections.abc import Callable, Sequence
 from datetime import date, datetime, timedelta
 from typing import Any
 
+from caldav.lib.error import RateLimitError
 from mcp.types import EmbeddedResource, ImageContent, TextContent, Tool
 
-from .backends import CaldavBackend
+from .backends import BackendUnavailableError, CaldavBackend
+
+logger = logging.getLogger(__name__)
 
 _backends: list[CaldavBackend] = []
 
@@ -22,6 +26,56 @@ def _time(value: str) -> datetime | date:
 def set_backends(backends: list[CaldavBackend]) -> None:
     global _backends
     _backends = backends
+
+
+def _describe(exc: Exception) -> str:
+    if isinstance(exc, BackendUnavailableError):
+        return f"rate limited by the server, not contacted for another {exc.retry_in:.0f} s"
+    if isinstance(exc, RateLimitError):
+        wait = exc.retry_after_seconds
+        return "rate limited by the server" + (f", retry after {wait:.0f} s" if wait else "")
+    return f"{type(exc).__name__}: {exc}"[:200]
+
+
+def _fan_out(
+    backends: list[CaldavBackend], query: Callable[[CaldavBackend], Any]
+) -> tuple[dict[str, Any], dict[str, str]]:
+    """Ask every backend; one that fails must not hide what the others returned.
+
+    Returns (results by backend name, error text by backend name). Raises only when every
+    backend asked failed, since then there is nothing to return."""
+    results: dict[str, Any] = {}
+    failed: dict[str, str] = {}
+    for backend in backends:
+        try:
+            results[backend.name] = query(backend)
+        except Exception as exc:
+            logger.warning("%s: %s", backend.name, _describe(exc))
+            failed[backend.name] = _describe(exc)
+    if failed and not results:
+        raise RuntimeError("; ".join(f"{name}: {why}" for name, why in failed.items()))
+    return results, failed
+
+
+def _json_result(payload: Any, failed: dict[str, str]) -> ToolResult:
+    """The payload as JSON, unchanged when every backend answered; with a second text item
+    naming the failed backends otherwise, so a partial answer is never mistaken for a full one."""
+    content: list[TextContent | ImageContent | EmbeddedResource] = [
+        TextContent(type="text", text=json.dumps(payload, indent=2))
+    ]
+    if failed:
+        listing = "; ".join(f"{name}: {why}" for name, why in failed.items())
+        content.append(
+            TextContent(
+                type="text",
+                text=(
+                    "WARNING: incomplete result. These backends could not be queried: "
+                    f"{listing}. The data above comes only from the other backends; "
+                    "try again later for the rest."
+                ),
+            )
+        )
+    return content
 
 
 class ToolHandler:
@@ -47,10 +101,8 @@ class ListCalendarsToolHandler(ToolHandler):
         )
 
     def run_tool(self, args: dict[str, Any]) -> ToolResult:
-        result: dict[str, list[str]] = {}
-        for backend in _backends:
-            result[backend.name] = backend.list_calendars()
-        return [TextContent(type="text", text=json.dumps(result, indent=2))]
+        results, failed = _fan_out(_backends, lambda b: b.list_calendars())
+        return _json_result(results, failed)
 
 
 class ListEventsToolHandler(ToolHandler):
@@ -99,14 +151,15 @@ class ListEventsToolHandler(ToolHandler):
         end = datetime.fromisoformat(args["end"])
         backend_filter: str | None = args.get("backend")
 
-        events = []
-        for backend in _backends:
-            if backend_filter is not None and backend.name != backend_filter:
-                continue
-            events.extend(backend.list_events(start, end, args.get("calendar_name")))
-
-        events.sort(key=lambda e: e.start.isoformat())
-        return [TextContent(type="text", text=json.dumps([e.to_dict() for e in events], indent=2))]
+        selected = [b for b in _backends if backend_filter is None or b.name == backend_filter]
+        results, failed = _fan_out(
+            selected, lambda b: b.list_events(start, end, args.get("calendar_name"))
+        )
+        events = sorted(
+            (event for found in results.values() for event in found),
+            key=lambda e: e.start.isoformat(),
+        )
+        return _json_result([e.to_dict() for e in events], failed)
 
 
 class CreateEventToolHandler(ToolHandler):
@@ -386,16 +439,15 @@ class GetFreeBusyToolHandler(ToolHandler):
         end = datetime.fromisoformat(args["end"])
         backend_filter: str | None = args.get("backend")
 
-        result: dict[str, list[list[str]]] = {}
-        for backend in _backends:
-            if backend_filter is not None and backend.name != backend_filter:
-                continue
-            slots = backend.get_freebusy(start, end, args.get("calendar_name"))
-            result[backend.name] = [
-                [slot_start.isoformat(), slot_end.isoformat()] for slot_start, slot_end in slots
-            ]
-
-        return [TextContent(type="text", text=json.dumps(result, indent=2))]
+        selected = [b for b in _backends if backend_filter is None or b.name == backend_filter]
+        results, failed = _fan_out(
+            selected,
+            lambda b: [
+                [slot_start.isoformat(), slot_end.isoformat()]
+                for slot_start, slot_end in b.get_freebusy(start, end, args.get("calendar_name"))
+            ],
+        )
+        return _json_result(results, failed)
 
 
 class CreateTaskToolHandler(ToolHandler):
@@ -575,18 +627,16 @@ class ListTasksToolHandler(ToolHandler):
         backend_filter: str | None = args.get("backend")
         calendar_name: str | None = args.get("calendar_name")
 
-        tasks = []
-        for backend in _backends:
-            if backend_filter is not None and backend.name != backend_filter:
-                continue
-            tasks.extend(
-                backend.list_tasks(
-                    calendar_name=calendar_name,
-                    include_completed=args.get("include_completed", False),
-                )
-            )
-
-        return [TextContent(type="text", text=json.dumps([t.to_dict() for t in tasks], indent=2))]
+        selected = [b for b in _backends if backend_filter is None or b.name == backend_filter]
+        results, failed = _fan_out(
+            selected,
+            lambda b: b.list_tasks(
+                calendar_name=calendar_name,
+                include_completed=args.get("include_completed", False),
+            ),
+        )
+        tasks = [task for found in results.values() for task in found]
+        return _json_result([t.to_dict() for t in tasks], failed)
 
 
 class DeleteTaskToolHandler(ToolHandler):
