@@ -23,4 +23,8 @@ EXPOSE 8000
 ENV CUPS_SERVER=/run/cups/cups.sock \
     PRINT_RENDERER_URL=http://127.0.0.1:3000
 
+# Unprivileged, and a UID no host account uses.
+ENV HOME=/tmp
+USER 10001:10001
+
 CMD ["mcp-print"]
