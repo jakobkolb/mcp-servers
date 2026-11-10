@@ -1,5 +1,11 @@
 replicaCount: 1
 
+# Deployment strategy, passed through as given. The Kubernetes default (RollingUpdate)
+# starts the new pod before the old one stops. For a server that is the only writer of a
+# ReadWriteOnce volume, or that holds a session only one process may use (a sync lock, a
+# linked-device login), set `strategy: {type: Recreate}` so the old pod is gone first.
+strategy: {}
+
 image:
   repository: ""
   tag: ""
