@@ -179,3 +179,29 @@ async def test_write_note_create_mode_raises_when_note_exists(tmp_path: Path):
             tmp_path,
             {"path": "existing.md", "content": "new content\n", "mode": "create"},
         )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("tool", ["write_note", "delete_note", "move_file"])
+async def test_write_tools_refuse_obsidian_plugin_paths(tmp_path: Path, tool: str):
+    """The agent must not be able to plant or remove plugin code under .obsidian/."""
+    from mcp_obsidian.errors import VaultPathError
+    from mcp_obsidian.tools import organizing, writing
+
+    cfg = _make_config(tmp_path)
+    (tmp_path / "ok.md").write_text("x\n", encoding="utf-8")
+    plugin = tmp_path / ".obsidian" / "plugins" / "x" / "main.js"
+    plugin.parent.mkdir(parents=True)
+    plugin.write_text("// existing\n", encoding="utf-8")
+
+    handlers = {**writing.get_handlers(cfg), **organizing.get_handlers(cfg)}
+    arguments = {
+        "write_note": {"path": ".obsidian/plugins/x/main.js", "content": "evil\n", "mode": "overwrite"},
+        "delete_note": {"path": ".obsidian/plugins/x/main.js", "confirm": True},
+        "move_file": {"source": "ok.md", "destination": ".obsidian/plugins/x/main.js"},
+    }[tool]
+
+    with pytest.raises(VaultPathError, match="Hidden"):
+        await handlers[tool](arguments)
+
+    assert plugin.read_text(encoding="utf-8") == "// existing\n"
