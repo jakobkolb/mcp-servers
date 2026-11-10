@@ -69,9 +69,7 @@ async def amain() -> None:
 
     if transport == "stdio":
         await run_stdio(server)
-    elif transport in {"streamable-http", "http", "sse"}:
-        if transport == "sse":
-            logging.warning("MCP_TRANSPORT=sse is deprecated; serving Streamable HTTP on /mcp")
+    elif transport == "streamable-http":
         await run_streamable_http(server, config)
     else:
         raise ValueError(f"Unsupported MCP_TRANSPORT: {config.mcp_transport}")
