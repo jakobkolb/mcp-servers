@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+import functools
 import logging
 import uuid
+from collections.abc import Callable
 from datetime import date, datetime, time, timedelta
 from time import monotonic
-from typing import cast
+from typing import Any, cast
 
 import caldav
 import icalendar
 import recurring_ical_events
+from caldav.lib.error import RateLimitError
 from dateutil.rrule import rrulestr
 
 from .calendar import (
@@ -22,6 +25,37 @@ from .config import GoogleConfig, ICloudConfig, NextcloudConfig
 logger = logging.getLogger(__name__)
 
 CALENDAR_LIST_TTL = 300  # seconds; calendars added or shared later show up after this
+DEFAULT_RATE_LIMIT_COOLDOWN = (
+    60.0  # seconds, when a rate-limit response carries no usable Retry-After
+)
+MAX_RATE_LIMIT_COOLDOWN = 3600.0  # seconds; a bogus Retry-After must not disable a backend for good
+
+
+class BackendUnavailableError(Exception):
+    """The server asked us to back off; raised without contacting it until that time has passed."""
+
+    def __init__(self, backend: str, retry_in: float) -> None:
+        super().__init__(
+            f"{backend}: rate limited by the server, not contacted for {retry_in:.0f} s"
+        )
+        self.backend = backend
+        self.retry_in = retry_in
+
+
+def _backs_off(method: Callable[..., Any]) -> Callable[..., Any]:
+    """Honour a server's rate limit: after a RateLimitError, leave the backend alone until the
+    Retry-After time has passed, instead of logging in and rediscovering on every call."""
+
+    @functools.wraps(method)
+    def wrapper(self: CaldavBackend, *args: Any, **kwargs: Any) -> Any:
+        self._check_cooldown()
+        try:
+            return method(self, *args, **kwargs)
+        except RateLimitError as exc:
+            self._start_cooldown(exc)
+            raise
+
+    return wrapper
 
 
 def _set(comp: icalendar.Component, **props: object) -> None:
@@ -134,6 +168,22 @@ class CaldavBackend:
         self._cached_client: caldav.DAVClient | None = None
         self._cached_all_calendars: list[caldav.Calendar] | None = None
         self._calendars_fetched_at = 0.0
+        self._blocked_until = 0.0
+
+    def _check_cooldown(self) -> None:
+        remaining = self._blocked_until - monotonic()
+        if remaining > 0:
+            raise BackendUnavailableError(self.name, remaining)
+
+    def _start_cooldown(self, exc: RateLimitError) -> None:
+        wait = exc.retry_after_seconds
+        seconds = min(
+            wait if wait and wait > 0 else DEFAULT_RATE_LIMIT_COOLDOWN, MAX_RATE_LIMIT_COOLDOWN
+        )
+        self._blocked_until = monotonic() + seconds
+        logger.warning(
+            "%s: rate limited by the server, not contacting it for %.0f s", self.name, seconds
+        )
 
     def _client(self) -> caldav.DAVClient:
         if self._cached_client is None:
@@ -243,9 +293,11 @@ class CaldavBackend:
                     return task
             raise
 
+    @_backs_off
     def list_calendars(self) -> list[str]:
         return [c.name for c in self._get_calendars()]
 
+    @_backs_off
     def list_events(
         self, start: datetime, end: datetime, calendar_name: str | None = None
     ) -> list[CalendarEvent]:
@@ -273,6 +325,7 @@ class CaldavBackend:
                 logger.exception("Failed to search calendar %s", getattr(cal, "name", "?"))
         return events
 
+    @_backs_off
     def create_event(
         self,
         summary: str,
@@ -311,6 +364,7 @@ class CaldavBackend:
         target.save_event(_new_calendar(event))
         return self._parse_event(event, target.name or "")
 
+    @_backs_off
     def update_event(
         self,
         uid: str,
@@ -360,6 +414,7 @@ class CaldavBackend:
 
         raise ValueError(f"Event with uid '{uid}' not found in backend '{self.name}'")
 
+    @_backs_off
     def delete_event(self, uid: str, recurrence_id: datetime | date | None = None) -> None:
         for cal in self._get_calendars():
             try:
@@ -378,6 +433,7 @@ class CaldavBackend:
             return
         raise ValueError(f"Event with uid '{uid}' not found in backend '{self.name}'")
 
+    @_backs_off
     def create_task(
         self,
         summary: str,
@@ -410,6 +466,7 @@ class CaldavBackend:
         target.save_event(_new_calendar(todo))
         return self._parse_task(todo, target.name or "")
 
+    @_backs_off
     def update_task(
         self,
         uid: str,
@@ -443,6 +500,7 @@ class CaldavBackend:
 
         raise ValueError(f"Task with uid '{uid}' not found in backend '{self.name}'")
 
+    @_backs_off
     def delete_task(self, uid: str) -> None:
         for col in self._get_task_collections():
             try:
@@ -453,6 +511,7 @@ class CaldavBackend:
                 continue
         raise ValueError(f"Task with uid '{uid}' not found in backend '{self.name}'")
 
+    @_backs_off
     def list_tasks(
         self, calendar_name: str | None = None, include_completed: bool = False
     ) -> list[CalendarTask]:
@@ -472,6 +531,7 @@ class CaldavBackend:
                 logger.exception("Failed to list tasks in collection %s", getattr(col, "name", "?"))
         return tasks
 
+    @_backs_off
     def get_freebusy(
         self, start: datetime, end: datetime, calendar_name: str | None = None
     ) -> list[tuple[datetime, datetime]]:

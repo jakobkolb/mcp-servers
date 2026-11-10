@@ -21,6 +21,12 @@ An MCP server providing a unified view of iCloud, Google, and Nextcloud calendar
 - `calendar_list_events` returns each instance of a series separately, with its `recurrence_id` (`null` for single events).
 - Pass that `recurrence_id` to `calendar_update_event` / `calendar_delete_event` to change or delete just that instance. Without it, updates apply to the whole series (time changes are rejected there) and deletes remove the series.
 
+### When a backend fails
+
+`calendar_list_calendars`, `calendar_list_events`, `calendar_get_freebusy` and `calendar_list_tasks` ask every backend. If one of them fails, the others' results are still returned, followed by a second text item that starts with `WARNING: incomplete result` and names the failed backends and why. The call itself fails only when every backend asked failed, or when the single backend you filtered on did.
+
+A server's rate limit is honoured: after a 429 or a 503 with `Retry-After`, that backend is not contacted again until the time has passed (60 s if the header has no number, at most 1 h). Calls in that window do not reach the server and report `not contacted for another N s`. Other errors start no cooldown. The cooldown is per backend and kept in memory, so a restart clears it.
+
 ### Tasks (VTODO)
 
 | Tool | Description |
