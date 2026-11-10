@@ -1,30 +1,5 @@
 MCP server {{ include "mcp-server.fullname" . }} deployed.
 
-{{- if .Values.ingress.enabled }}
-
-MCP endpoint: https://{{ .Values.ingress.host }}/mcp
-Health check:  https://{{ .Values.ingress.host }}/health
-
-Add to Claude Desktop (~/Library/Application Support/Claude/claude_desktop_config.json):
-
-  {
-    "mcpServers": {
-      "{{ .Release.Name }}": {
-        "url": "https://{{ .Values.ingress.host }}/mcp"
-      }
-    }
-  }
-
-If the server requires an API key, add an Authorization header:
-
-  {
-    "mcpServers": {
-      "{{ .Release.Name }}": {
-        "url": "https://{{ .Values.ingress.host }}/mcp",
-        "headers": {
-          "Authorization": "Bearer <your-api-key>"
-        }
-      }
-    }
-  }
-{{- end }}
+It listens on service port {{ .Values.service.port }}, path /mcp, with /health beside it, and has no
+authentication of its own. This chart creates no Ingress: put it behind the OAuth gateway
+(jakobkolb/mcp-oauth-gateway) before exposing it.

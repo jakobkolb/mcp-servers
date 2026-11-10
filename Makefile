@@ -59,7 +59,6 @@ helm-lint:
 	helm lint $(CHART_DIR)
 	helm template test $(CHART_DIR) \
 		--set image.repository=test \
-		--set ingress.host=test.example.com \
 		| kubeconform -strict -summary
 
 # Requires: helm, helm-unittest plugin (helm plugin install https://github.com/helm-unittest/helm-unittest)
