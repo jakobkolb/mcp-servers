@@ -180,3 +180,30 @@ tests:
       - equal:
           path: spec.template.spec.volumes[1].name
           value: vault
+
+  - it: rolls the pod when the mounted config Secret changes
+    set:
+      configFile.enabled: true
+      configFile.content: "a: 1"
+    asserts:
+      - matchRegex:
+          path: spec.template.metadata.annotations["checksum/config"]
+          pattern: "^[0-9a-f]{64}$"
+      - notExists:
+          path: spec.template.metadata.annotations["checksum/secret"]
+
+  - it: rolls the pod when the injected env Secret changes
+    set:
+      secretEnv:
+        API_KEY: "secret"
+    asserts:
+      - matchRegex:
+          path: spec.template.metadata.annotations["checksum/secret"]
+          pattern: "^[0-9a-f]{64}$"
+      - notExists:
+          path: spec.template.metadata.annotations["checksum/config"]
+
+  - it: has no checksum annotations when there is no Secret to watch
+    asserts:
+      - notExists:
+          path: spec.template.metadata.annotations
