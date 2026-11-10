@@ -14,4 +14,7 @@ ENV CALENDAR_CONFIG=/config/config.yaml
 COPY --from=build /app/.venv /app/.venv
 ENV PATH=/app/.venv/bin:$PATH
 EXPOSE 8000
+# Unprivileged, and a UID no host account uses.
+USER 10001:10001
+
 CMD ["mcp-calendar"]

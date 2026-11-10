@@ -27,6 +27,10 @@ extraVolumes:
 extraVolumeMounts:
   - name: cups
     mountPath: /run/cups
+    # Stops the container replacing the socket file for other clients on the host.
+    # It does not limit what can be sent over the socket; the unprivileged UID in the
+    # image does that (cupsd maps the caller's UID against the host's accounts).
+    readOnly: true
 
 # Renders the HTML from the tool call to PDF. Locked down: loopback only, no network
 # fetches (every URL except its own temp files is denied and DNS resolves nothing),
