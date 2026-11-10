@@ -63,6 +63,32 @@ tests:
       - notExists:
           path: spec.template.spec.containers[0].securityContext
 
+  - it: leaves the strategy to Kubernetes by default
+    asserts:
+      - notExists:
+          path: spec.strategy
+
+  - it: passes the deployment strategy through
+    set:
+      strategy:
+        type: Recreate
+    asserts:
+      - equal:
+          path: spec.strategy.type
+          value: Recreate
+
+  - it: passes rolling update parameters through
+    set:
+      strategy:
+        type: RollingUpdate
+        rollingUpdate:
+          maxSurge: 0
+          maxUnavailable: 1
+    asserts:
+      - equal:
+          path: spec.strategy.rollingUpdate.maxUnavailable
+          value: 1
+
   - it: injects plain env vars
     set:
       env:
