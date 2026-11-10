@@ -9,7 +9,7 @@
 uv run python -m example_server.server
 
 # Run via Docker
-docker build -t mcp-example:latest .
+docker build -f servers/example/Dockerfile -t mcp-example:latest .   # from the repository root
 docker run --rm -i mcp-example:latest
 ```
 

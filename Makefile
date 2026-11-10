@@ -45,12 +45,12 @@ list-servers:
 
 build:
 ifdef SERVER
-	docker build -t mcp-$(SERVER):latest servers/$(SERVER)
+	docker build -f servers/$(SERVER)/Dockerfile -t mcp-$(SERVER):latest .
 else
 	@for server in $(DOCKERSERVERS); do \
 		name=$$(basename $$server); \
 		echo "Building mcp-$$name..."; \
-		docker build -t mcp-$$name:latest $$server; \
+		docker build -f $$server/Dockerfile -t mcp-$$name:latest .; \
 	done
 endif
 
