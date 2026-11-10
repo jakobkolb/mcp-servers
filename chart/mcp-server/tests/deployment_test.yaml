@@ -38,6 +38,31 @@ tests:
             name: PORT
             value: "8000"
 
+  - it: passes podSecurityContext to the pod and securityContext to the main container
+    set:
+      podSecurityContext:
+        fsGroup: 10001
+      securityContext:
+        runAsUser: 10001
+        runAsNonRoot: true
+    asserts:
+      - equal:
+          path: spec.template.spec.securityContext.fsGroup
+          value: 10001
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.runAsUser
+          value: 10001
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.runAsNonRoot
+          value: true
+
+  - it: renders no securityContext when none is configured
+    asserts:
+      - notExists:
+          path: spec.template.spec.securityContext
+      - notExists:
+          path: spec.template.spec.containers[0].securityContext
+
   - it: injects plain env vars
     set:
       env:

@@ -77,7 +77,7 @@ fails its probe while fetching. Jobs submitted meanwhile stay queued until the m
 WHISPER_MODEL_DIR=./models WHISPER_SPOOL_DIR=./spool uv run mcp-whisper
 
 # Run via Docker
-docker build -t mcp-whisper:latest .
+docker build -f servers/mcp-whisper/Dockerfile -t mcp-whisper:latest .   # from the repository root
 docker run --rm -p 8000:8000 -v whisper-models:/models mcp-whisper:latest
 ```
 

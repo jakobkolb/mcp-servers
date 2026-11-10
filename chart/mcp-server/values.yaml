@@ -58,6 +58,12 @@ extraContainers: []
   #     - name: vault
   #       mountPath: /vault
 
+# Pod and container security contexts, passed through as given. The images of the
+# stateless servers already run as UID 10001; set runAsUser/fsGroup here for the
+# ones that write to a volume.
+podSecurityContext: {}
+securityContext: {}
+
 resources:
   requests:
     cpu: 50m
