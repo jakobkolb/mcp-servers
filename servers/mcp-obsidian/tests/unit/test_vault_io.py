@@ -196,7 +196,11 @@ async def test_write_tools_refuse_obsidian_plugin_paths(tmp_path: Path, tool: st
 
     handlers = {**writing.get_handlers(cfg), **organizing.get_handlers(cfg)}
     arguments = {
-        "write_note": {"path": ".obsidian/plugins/x/main.js", "content": "evil\n", "mode": "overwrite"},
+        "write_note": {
+            "path": ".obsidian/plugins/x/main.js",
+            "content": "evil\n",
+            "mode": "overwrite",
+        },
         "delete_note": {"path": ".obsidian/plugins/x/main.js", "confirm": True},
         "move_file": {"source": "ok.md", "destination": ".obsidian/plugins/x/main.js"},
     }[tool]
