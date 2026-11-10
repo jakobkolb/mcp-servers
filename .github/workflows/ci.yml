@@ -126,11 +126,19 @@ jobs:
             # First tag ever - nothing to diff against, treat everything as changed.
             CHANGED="$ALL_SERVERS"
           else
-            CHANGED_PATHS=$(git diff --name-only "$PREV_TAG"..HEAD -- servers/)
-            CHANGED=$(for s in $ALL_SERVERS; do
-              # `if`, not `&&`: an unchanged last server would end the loop with status 1 and kill the step under -e
-              if echo "$CHANGED_PATHS" | grep -q "^servers/$s/"; then echo "$s"; fi
-            done)
+            # Inputs every server shares: the Helm chart and the dependency lock. A change there
+            # reaches all of them, so all of them are bumped; checking servers/ alone made a
+            # chart-only release (v0.13.0, the `strategy` value) bump just the one server whose
+            # code had changed, and the new chart never reached the others.
+            if [ -n "$(git diff --name-only "$PREV_TAG"..HEAD -- chart/mcp-server/ uv.lock pyproject.toml)" ]; then
+              CHANGED="$ALL_SERVERS"
+            else
+              CHANGED_PATHS=$(git diff --name-only "$PREV_TAG"..HEAD -- servers/)
+              CHANGED=$(for s in $ALL_SERVERS; do
+                # `if`, not `&&`: an unchanged last server would end the loop with status 1 and kill the step under -e
+                if echo "$CHANGED_PATHS" | grep -q "^servers/$s/"; then echo "$s"; fi
+              done)
+            fi
           fi
 
           SERVERS_JSON=$(printf '%s\n' $CHANGED | jq -R . | jq -sc 'map(select(length > 0))')
