@@ -11,6 +11,18 @@ spec:
       {{- include "mcp-server.selectorLabels" . | nindent 6 }}
   template:
     metadata:
+      {{- if or .Values.configFile.enabled .Values.secretEnv }}
+      annotations:
+        {{- /* A mounted Secret updates on disk and an env var is read once at start,
+               so without these the pod keeps running on the old credentials after
+               a helm upgrade or an ArgoCD sync. Hashing the rendered Secret rolls it. */}}
+        {{- if .Values.configFile.enabled }}
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- end }}
+        {{- if .Values.secretEnv }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- end }}
+      {{- end }}
       labels:
         {{- include "mcp-server.labels" . | nindent 8 }}
     spec:
